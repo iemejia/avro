@@ -27,6 +27,7 @@ ENV APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=isolemnlysweariamuptonogood \
 RUN apt-get -qqy update \
  && apt-get -qqy install --no-install-recommends ant \
                                                  apt-transport-https \
+                                                 apt-utils \
                                                  asciidoc \
                                                  bison \
                                                  bzip2 \
@@ -70,10 +71,11 @@ RUN apt-get -qqy update \
 RUN curl -sSL https://deb.nodesource.com/setup_6.x \
   | bash - \
  && apt-get -qqy install nodejs \
+                         npm \
  && apt-get -qqy clean \
  && rm -rf /var/lib/apt/lists \
  && npm install -g grunt-cli \
- && npm cache clean
+ && npm cache clean --force
 
 # Install Perl modules
 RUN curl -L https://cpanmin.us | perl - --self-upgrade && \
@@ -126,11 +128,11 @@ RUN curl -sSL https://cpanmin.us \
 ENV PIP_NO_CACHE_DIR=off
 
 # Install Python2 packages
-RUN python2 -m pip install --upgrade pip setuptools \
+RUN python2 -m pip install --upgrade pip setuptools wheel \
  && python2 -m pip install zstandard
 
 # Install Python3 packages
-RUN python3 -m pip install --upgrade pip setuptools \
+RUN python3 -m pip install --upgrade pip setuptools wheel \
  && python3 -m pip install zstandard
 
 # Install Ruby modules
