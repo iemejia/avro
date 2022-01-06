@@ -54,7 +54,7 @@ harness = false
 byteorder = "1.4.3"
 bzip2 = { version = "0.4.3", optional = true }
 crc32fast = { version = "1.2.1", optional = true }
-digest = "0.9"
+digest = "0.10"
 libflate = "1.1.1"
 num-bigint = "0.4.2"
 rand = "0.8.4"
