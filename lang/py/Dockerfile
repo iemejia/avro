@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Python build using the official Python image
-FROM python:3.12-slim
+# Python build using the official Python image (minimum supported version from CI)
+FROM python:3.10-slim
 
 WORKDIR /avro
 

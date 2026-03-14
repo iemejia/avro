@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Ruby build using the official Ruby image
-FROM ruby:3.3-slim
+# Ruby build using the official Ruby image (minimum supported version from CI)
+FROM ruby:2.7-slim
 
 WORKDIR /avro
 
@@ -35,7 +35,7 @@ COPY . .
 
 WORKDIR /avro/lang/ruby
 
-# Install gem dependencies
-RUN gem install bundler --no-document && bundle install
+# Install gem dependencies (Ruby 2.7 requires bundler < 2.5)
+RUN gem install bundler -v '~> 2.4.0' --no-document && bundle install
 
 CMD ["./build.sh", "test"]

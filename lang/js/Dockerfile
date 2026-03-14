@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# JavaScript build using the official Node.js image
-FROM node:24-slim
+# JavaScript build using the official Node.js image (minimum supported version from CI)
+FROM node:20-slim
 
 WORKDIR /avro
 

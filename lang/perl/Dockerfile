@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Perl build using the official Perl image
-FROM perl:5.40-slim
+# Perl build using the official Perl image (minimum supported version from CI)
+FROM perl:5.32-slim
 
 WORKDIR /avro
 

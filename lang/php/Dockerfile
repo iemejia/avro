@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# PHP build using the official PHP image
-FROM php:8.3-cli
+# PHP build using the official PHP image (minimum supported version from CI)
+FROM php:8.1-cli
 
 WORKDIR /avro
 
