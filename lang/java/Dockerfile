@@ -30,9 +30,11 @@ RUN apt-get -qqy update \
  && apt-get -qqy clean \
  && rm -rf /var/lib/apt/lists/*
 
-# Create toolchains.xml so Maven can find all three JDKs
+# Create toolchains.xml so Maven can find all three JDKs.
+# Use dpkg --print-architecture to resolve the correct JDK path on both amd64 and arm64.
 RUN mkdir -p /root/.m2 \
- && echo '<?xml version="1.0" encoding="UTF-8"?>\n\
+ && ARCH=$(dpkg --print-architecture) \
+ && echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
 <toolchains>\n\
   <toolchain>\n\
     <type>jdk</type>\n\
@@ -40,7 +42,7 @@ RUN mkdir -p /root/.m2 \
       <version>11</version>\n\
     </provides>\n\
     <configuration>\n\
-      <jdkHome>/usr/lib/jvm/temurin-11-jdk-amd64</jdkHome>\n\
+      <jdkHome>/usr/lib/jvm/temurin-11-jdk-${ARCH}</jdkHome>\n\
     </configuration>\n\
   </toolchain>\n\
   <toolchain>\n\
@@ -49,7 +51,7 @@ RUN mkdir -p /root/.m2 \
       <version>17</version>\n\
     </provides>\n\
     <configuration>\n\
-      <jdkHome>/usr/lib/jvm/temurin-17-jdk-amd64</jdkHome>\n\
+      <jdkHome>/usr/lib/jvm/temurin-17-jdk-${ARCH}</jdkHome>\n\
     </configuration>\n\
   </toolchain>\n\
   <toolchain>\n\
@@ -61,7 +63,7 @@ RUN mkdir -p /root/.m2 \
       <jdkHome>/opt/java/openjdk</jdkHome>\n\
     </configuration>\n\
   </toolchain>\n\
-</toolchains>' > /root/.m2/toolchains.xml
+</toolchains>" > /root/.m2/toolchains.xml
 
 # Copy the full project (needed for top-level pom.xml and shared resources)
 COPY . .
