@@ -47,6 +47,9 @@ cd "${0%/*}"
 
 VERSION=$(<share/VERSION.txt)
 
+# All supported language services in docker-compose.yml
+ALL_LANG_SERVICES="java python js c cpp csharp ruby perl php"
+
 # Extra flags to add to the docker run command.  This can be overridden using the --args argument.
 DOCKER_RUN_XTRA_ARGS=${DOCKER_RUN_XTRA_ARGS-}
 # The entrypoint when running the avro docker from this script.
@@ -60,8 +63,49 @@ DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME-}
 DOCKER_EXTRA_CONTEXT="lang/ruby/Gemfile lang/ruby/avro.gemspec lang/ruby/Manifest share/VERSION.txt"
 
 usage() {
-  echo "Usage: $0 {lint|test|dist|sign|clean|veryclean|docker [--args \"docker-args\"]|rat|githooks|docker-test}"
+  echo "Usage: $0 {lint|test|dist|sign|clean|veryclean|docker [--args \"docker-args\"]|rat|githooks|docker-test|docker-build|docker-lint}"
+  echo ""
+  echo "Docker per-language targets (using official Docker images):"
+  echo "  docker-build [lang ...]   Build Docker images for specified languages (or all)"
+  echo "  docker-test  [lang ...]   Run tests in Docker containers for specified languages (or all)"
+  echo "  docker-lint  [lang ...]   Run linters in Docker containers for specified languages (or all)"
+  echo ""
+  echo "Available languages: $ALL_LANG_SERVICES"
+  echo ""
+  echo "Examples:"
+  echo "  $0 docker-build              # Build all language Docker images"
+  echo "  $0 docker-build java python  # Build only Java and Python images"
+  echo "  $0 docker-test java          # Run Java tests in its official Docker image"
+  echo "  $0 docker-test               # Run all language tests in parallel"
+  echo "  $0 docker-lint python js     # Lint Python and JavaScript in Docker"
   exit 1
+}
+
+# Resolve language names to docker compose service names
+resolve_services() {
+  local services=""
+  for lang in "$@"; do
+    case "$lang" in
+      java|python|js|c|cpp|csharp|ruby|perl|php)
+        services="$services $lang"
+        ;;
+      c++)
+        services="$services cpp"
+        ;;
+      py)
+        services="$services python"
+        ;;
+      javascript|node)
+        services="$services js"
+        ;;
+      *)
+        echo "Unknown language: $lang"
+        echo "Available: $ALL_LANG_SERVICES"
+        exit 1
+        ;;
+    esac
+  done
+  echo "$services"
 }
 
 (( $# == 0 )) && usage
@@ -283,6 +327,9 @@ do
       rm -rf lang/ruby/Gemfile.lock
       rm -rf lang/csharp/src/apache/ipc.test/bin/
       rm -rf lang/csharp/src/apache/ipc.test/obj
+
+      # Clean up Docker images and volumes
+      docker compose down --rmi local --volumes 2>/dev/null || true
       ;;
 
     docker)
@@ -350,16 +397,60 @@ do
       chmod -x .git/hooks/*sample*
       ;;
 
-    docker-test)
-      if [ -z "$BUILDPLATFORM" ]; then
-        export BUILDPLATFORM=$(docker info --format "{{.OSType}}/{{.Architecture}}")
+    docker-build)
+      # Build Docker images for per-language containers using official images.
+      # Remaining arguments are treated as language names; if none, build all.
+      services=""
+      while (( "$#" )) && [[ "$1" != -* ]]; do
+        services="$services $(resolve_services "$1")"
+        shift
+      done
+      if [ -z "$services" ]; then
+        services="$ALL_LANG_SERVICES"
       fi
-      tar -cf- share/docker/Dockerfile $DOCKER_EXTRA_CONTEXT |
-        DOCKER_BUILDKIT=1 docker build -t avro-test --build-arg BUILDPLATFORM="${BUILDPLATFORM}" -f share/docker/Dockerfile -
-      docker run --rm \
-        --volume "${PWD}:/avro${DOCKER_MOUNT_FLAG}" \
-        --volume "${PWD}/share/docker/m2/:/root/.m2/" \
-        --env "JAVA=${JAVA:-11}" avro-test /avro/share/docker/run-tests.sh
+      echo "Building Docker images for:$services"
+      # shellcheck disable=SC2086
+      docker compose build $services
+      ;;
+
+    docker-test)
+      # Run tests inside per-language Docker containers using official images.
+      # Remaining arguments are treated as language names; if none, test all.
+      services=""
+      while (( "$#" )) && [[ "$1" != -* ]]; do
+        services="$services $(resolve_services "$1")"
+        shift
+      done
+      if [ -z "$services" ]; then
+        services="$ALL_LANG_SERVICES"
+      fi
+      echo "Running tests in Docker for:$services"
+      for svc in $services; do
+        echo "================================================================"
+        echo "  Testing: $svc"
+        echo "================================================================"
+        docker compose run --rm "$svc" ./build.sh test
+      done
+      ;;
+
+    docker-lint)
+      # Run linters inside per-language Docker containers using official images.
+      # Remaining arguments are treated as language names; if none, lint all.
+      services=""
+      while (( "$#" )) && [[ "$1" != -* ]]; do
+        services="$services $(resolve_services "$1")"
+        shift
+      done
+      if [ -z "$services" ]; then
+        services="$ALL_LANG_SERVICES"
+      fi
+      echo "Running linters in Docker for:$services"
+      for svc in $services; do
+        echo "================================================================"
+        echo "  Linting: $svc"
+        echo "================================================================"
+        docker compose run --rm "$svc" ./build.sh lint
+      done
       ;;
 
     *)

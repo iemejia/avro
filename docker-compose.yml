@@ -14,11 +14,75 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-version: "3"
+# Per-language build services using official Docker images.
+# Each language is built and tested in its own container with the
+# corresponding official base image.
+#
+# Usage:
+#   docker compose build                    # Build all language images
+#   docker compose build java               # Build only the Java image
+#   docker compose run java ./build.sh test # Run Java tests
+#   docker compose up                       # Run all language tests in parallel
+#
+# For development with live source mounts (no rebuild needed):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml run java ./build.sh test
+
 services:
-  avro:
+  java:
     build:
       context: .
-      dockerfile: ./share/docker/Dockerfile
+      dockerfile: lang/java/Dockerfile
+    image: avro-java:latest
     volumes:
-      - ".:/avro"
+      - maven-cache:/root/.m2/repository
+
+  python:
+    build:
+      context: .
+      dockerfile: lang/py/Dockerfile
+    image: avro-python:latest
+
+  js:
+    build:
+      context: .
+      dockerfile: lang/js/Dockerfile
+    image: avro-js:latest
+
+  c:
+    build:
+      context: .
+      dockerfile: lang/c/Dockerfile
+    image: avro-c:latest
+
+  cpp:
+    build:
+      context: .
+      dockerfile: lang/c++/Dockerfile
+    image: avro-cpp:latest
+
+  csharp:
+    build:
+      context: .
+      dockerfile: lang/csharp/Dockerfile
+    image: avro-csharp:latest
+
+  ruby:
+    build:
+      context: .
+      dockerfile: lang/ruby/Dockerfile
+    image: avro-ruby:latest
+
+  perl:
+    build:
+      context: .
+      dockerfile: lang/perl/Dockerfile
+    image: avro-perl:latest
+
+  php:
+    build:
+      context: .
+      dockerfile: lang/php/Dockerfile
+    image: avro-php:latest
+
+volumes:
+  maven-cache:
