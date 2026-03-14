@@ -50,20 +50,8 @@ VERSION=$(<share/VERSION.txt)
 # All supported language services in docker-compose.yml
 ALL_LANG_SERVICES="java python js c cpp csharp ruby perl php"
 
-# Extra flags to add to the docker run command.  This can be overridden using the --args argument.
-DOCKER_RUN_XTRA_ARGS=${DOCKER_RUN_XTRA_ARGS-}
-# The entrypoint when running the avro docker from this script.
-DOCKER_RUN_ENTRYPOINT=${DOCKER_RUN_ENTRYPOINT-bash}
-# Extra flags to add to the docker build command.
-DOCKER_BUILD_XTRA_ARGS=${DOCKER_BUILD_XTRA_ARGS-}
-# Override the docker image name used.
-DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME-}
-
-# When building a docker container, these are the files that will sent and available.
-DOCKER_EXTRA_CONTEXT="lang/ruby/Gemfile lang/ruby/avro.gemspec lang/ruby/Manifest share/VERSION.txt"
-
 usage() {
-  echo "Usage: $0 {lint|test|dist|sign|clean|veryclean|docker [--args \"docker-args\"]|rat|githooks|docker-test|docker-build|docker-lint}"
+  echo "Usage: $0 {lint|test|dist|sign|clean|veryclean|rat|githooks|docker-build|docker-test|docker-lint}"
   echo ""
   echo "Docker per-language targets (using official Docker images):"
   echo "  docker-build [lang ...]   Build Docker images for specified languages (or all)"
@@ -330,60 +318,6 @@ do
 
       # Clean up Docker images and volumes
       docker compose down --rmi local --volumes 2>/dev/null || true
-      ;;
-
-    docker)
-      echo "NB: for Docker Desktop users on MacOS, the default file sharing implementation (VirtioFS) has issues with some operations. You should better use gRPC FUSE or osxfs."
-      if [[ $1 =~ ^--args ]]; then
-        DOCKER_RUN_XTRA_ARGS=$2
-        shift 2
-      fi
-      if [[ "$(uname -s)" = Linux ]]; then
-        USER_NAME=${SUDO_USER:=$USER}
-        USER_ID=$(id -u "$USER_NAME")
-        GROUP_ID=$(id -g "$USER_NAME")
-      else # boot2docker uid and gid
-        USER_NAME=$USER
-        USER_ID=1000
-        GROUP_ID=50
-      fi
-      DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME:-"avro-build-$USER_NAME:latest"}
-      {
-        cat share/docker/Dockerfile
-        echo "ENV HOME=/home/$USER_NAME"
-        echo "RUN getent passwd $USER_ID && userdel \$(getent passwd $USER_ID | cut -d: -f1)"
-        echo "RUN getent group $GROUP_ID || groupadd -g $GROUP_ID $USER_NAME"
-        echo "RUN useradd -N -g $GROUP_ID -u $USER_ID -k /root -m $USER_NAME"
-        echo "RUN mkdir -p /home/$USER_NAME/.m2/repository"
-        echo "RUN chown -R --reference=/home/$USER_NAME /home/$USER_NAME/.m2/"
-      } > Dockerfile
-
-      if [ -z "$BUILDPLATFORM" ]; then
-        export BUILDPLATFORM=$(docker info --format "{{.OSType}}/{{.Architecture}}")
-      fi
-      # Include the ruby gemspec for preinstallation.
-      # shellcheck disable=SC2086
-      tar -cf- Dockerfile $DOCKER_EXTRA_CONTEXT | DOCKER_BUILDKIT=1 docker build $DOCKER_BUILD_XTRA_ARGS --build-arg="BUILDPLATFORM=${BUILDPLATFORM}" -t "$DOCKER_IMAGE_NAME" -
-      rm Dockerfile
-      # By mapping the .m2/repository directory you can do an mvn install from
-      # within the container and use the result on your normal
-      # system.  And this also is a significant speedup in subsequent
-      # builds because the dependencies are downloaded only once.
-      #
-      # On OSX, it's highly suggested to set an env variable of:
-      # export DOCKER_MOUNT_FLAG=":delegated"
-      # Using :delegated will drop the "mvn install" time from over 30 minutes
-      # down to under 10.  However, editing files from OSX may take a few
-      # extra second before the changes are available within the docker container.
-      # shellcheck disable=SC2086
-      docker run --rm -t -i \
-        --env "JAVA=${JAVA:-21}" \
-        --user "${USER_NAME}" \
-        --volume "${HOME}/.gnupg:/home/${USER_NAME}/.gnupg" \
-        --volume "${HOME}/.m2/repository:/home/${USER_NAME}/.m2/repository${DOCKER_MOUNT_FLAG}" \
-        --volume "${PWD}:/home/${USER_NAME}/avro${DOCKER_MOUNT_FLAG}" \
-        --workdir "/home/${USER_NAME}/avro" \
-        ${DOCKER_RUN_XTRA_ARGS} "$DOCKER_IMAGE_NAME" ${DOCKER_RUN_ENTRYPOINT}
       ;;
 
     rat)

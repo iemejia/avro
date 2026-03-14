@@ -1,61 +1,154 @@
 # Apache Avro Build Instructions
 
+## Overview
+
+Apache Avro is a polyglot project spanning 9 languages. Each language can be
+built and tested independently using Docker containers based on official Docker
+Hub images, so you do not need to install any language toolchains on your host
+machine.
+
 ## Requirements
 
-The following packages must be installed before Avro can be built:
+### Using Docker (Recommended)
 
- - Java: 11, 17 and 21 with the appropriate toolchain config, Maven 3.9.6 or better, protobuf-compile
- - PHP: php8, phpunit, php8-gmp
- - Python 3: 3.10 or greater, tox (tox will install other dependencies as needed)
+The only host requirements for Docker-based builds are:
+
+ - [Docker](https://docs.docker.com/get-docker/) (with BuildKit support)
+ - [Docker Compose](https://docs.docker.com/compose/install/) v2+
+
+Each language has its own Dockerfile in `lang/<language>/Dockerfile` using the
+official Docker Hub image for that language. The `docker-compose.yml` at the
+project root defines a service for each language.
+
+### Native (Without Docker)
+
+To build natively without Docker, you need the toolchains for each language
+you want to build:
+
+ - Java: JDK 11, 17, and 21 with Maven 3.9+
+ - Python: 3.10 or greater
+ - JavaScript: Node.js 20.x+, npm
  - C: gcc, cmake, asciidoc, source-highlight, Jansson, pkg-config
- - C++: cmake 3.7.2 or greater, g++, flex, bison, libboost-dev
- - C#: .NET Core 2.2 SDK
- - JavaScript: Node 20.x+, nodejs, npm
- - Ruby: Ruby 2.7 or greater, ruby-dev, gem, bundler, snappy
- - Perl: Perl 5.24.1 or greater, gmake, Module::Install,
-   Module::Install::ReadmeFromPod, Module::Install::Repository,
-   Math::BigInt, JSON::MaybeXS, Try::Tiny, Regexp::Common, Encode,
-   Object::Tiny, Compress::ZLib, Error::Simple, Test::More,
-   Test::Exception, Test::Pod
- - Apache Ant 1.7
- - md5sum, sha1sum, used by top-level dist target
+ - C++: cmake 3.7.2+, g++, flex, bison, libboost-dev, libfmt-dev
+ - C#: .NET SDK 8.0
+ - Ruby: Ruby 2.7+, bundler, snappy
+ - Perl: Perl 5.32+, cpanm, and various CPAN modules (see `lang/perl/Dockerfile`)
+ - PHP: PHP 8.1+, Composer, php-zstd, php-snappy
 
-## Using docker
+## Docker Build System
 
-It can be simpler to use a Docker image with all of the requirements already
-installed. If you have Docker installed on your host machine, you can build
-inside a container by running:
+### Architecture
+
+Each language is built in its own container using the official base image at
+the minimum version supported by CI:
+
+| Language   | Service  | Base Image                          | Dockerfile              |
+|------------|----------|-------------------------------------|-------------------------|
+| Java       | java     | `maven:3.9-eclipse-temurin-21`      | `lang/java/Dockerfile`  |
+| Python     | python   | `python:3.10-slim`                  | `lang/py/Dockerfile`    |
+| JavaScript | js       | `node:20-slim`                      | `lang/js/Dockerfile`    |
+| C          | c        | `gcc:14`                            | `lang/c/Dockerfile`     |
+| C++        | cpp      | `gcc:14`                            | `lang/c++/Dockerfile`   |
+| C#         | csharp   | `mcr.microsoft.com/dotnet/sdk:8.0`  | `lang/csharp/Dockerfile`|
+| Ruby       | ruby     | `ruby:2.7-slim`                     | `lang/ruby/Dockerfile`  |
+| Perl       | perl     | `perl:5.32-slim`                    | `lang/perl/Dockerfile`  |
+| PHP        | php      | `php:8.1-cli`                       | `lang/php/Dockerfile`   |
+
+### Building Docker Images
+
+Build all language images:
 
 ```bash
-./build.sh docker
-docker@539f6535c9db:~/avro$ cd lang/java/
-docker@539f6535c9db:~/avro/lang/java$ ./build.sh test
-[INFO] Scanning for projects...
+./build.sh docker-build
 ```
 
-When this completes you will be in a shell running in the
-container. Building the image the first time may take a while (20
-minutes or more) since dependencies must be downloaded and
-installed. However subsequent invocations are much faster as the
-cached image is used.
-
-The working directory in the container is mounted from your host. This
-allows you to access the files in your Avro development tree from the
-Docker container.
-
-There are some additional `DOCKER_` environment variables described in
-[build.sh](./build.sh) that can be used to interact with the image using
-the build script. Some examples:
+Build specific language images:
 
 ```bash
-# Rebuild the docker image without using the build cache.
-DOCKER_BUILD_XTRA_ARGS=--no-cache ./build.sh docker
+./build.sh docker-build java python
+```
 
-# Build a docker image with a specific tag (for an RC or poc, for example)
-DOCKER_IMAGE_NAME=avro-build:1.10.1-rc1 ./build.sh docker
+Or use `docker compose` directly:
 
-# Run a command and return.
-DOCKER_RUN_ENTRYPOINT="mvn --version" ./build.sh docker
+```bash
+docker compose build java
+```
+
+### Running Tests in Docker
+
+Run tests for all languages:
+
+```bash
+./build.sh docker-test
+```
+
+Run tests for specific languages:
+
+```bash
+./build.sh docker-test java python
+```
+
+### Running Linters in Docker
+
+Run linters for all languages:
+
+```bash
+./build.sh docker-lint
+```
+
+Run linters for specific languages:
+
+```bash
+./build.sh docker-lint python js
+```
+
+### Language Name Aliases
+
+The following aliases are recognized when specifying languages:
+
+ - `c++` maps to the `cpp` service
+ - `py` maps to the `python` service
+ - `javascript` or `node` maps to the `js` service
+
+### Development Mode
+
+For iterative development, use the development overlay to mount your local
+source tree into the container. This lets you edit files locally and re-run
+builds without rebuilding the Docker image:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm java ./build.sh test
+```
+
+### Cleaning Up Docker Resources
+
+To remove all per-language Docker images and volumes:
+
+```bash
+./build.sh veryclean
+```
+
+Or manually:
+
+```bash
+docker compose down --rmi local --volumes
+```
+
+## Building Natively
+
+Once the native requirements are installed, `build.sh` can be used as follows:
+
+```bash
+./build.sh test    # runs tests for all languages
+./build.sh dist    # creates all release distribution files in dist/
+./build.sh clean   # removes all generated artifacts
+```
+
+Each language also has its own `build.sh` in its directory:
+
+```bash
+cd lang/java && ./build.sh test
+cd lang/py   && ./build.sh lint test
 ```
 
 ## Developing inside a Container (Visual Studio Code Devcontainer)
@@ -71,23 +164,3 @@ Requirement:
 Useful links:
  - [Developing inside a Container](https://code.visualstudio.com/docs/remote/containers)
  - [Going further with Dev Containers](https://microsoft.github.io/code-with-engineering-playbook/developer-experience/going-further/)
-
-## Building
-
-Once the requirements are installed (or from the Docker container),
-build.sh can be used as follows:
-
-```
-./build.sh test # runs tests for all languages
-./build.sh dist # creates all release distribution files in dist/
-./build.sh clean # removes all generated artifacts
-```
-
-## Testing
-
-Testing is done with the same Docker container as mentioned in the building
-step. The difference is that it will do clean run of the full test suite:
-
-```bash
-./build.sh docker-test
-```
