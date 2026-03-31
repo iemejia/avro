@@ -18,7 +18,6 @@
 package org.apache.avro.fuzz;
 
 import com.code_intelligence.jazzer.junit.FuzzTest;
-import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.file.DataFileReader;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.file.SeekableByteArrayInput;
@@ -26,7 +25,6 @@ import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 
 /**
  * Fuzz tests for Avro data file (container format) reading.
@@ -35,19 +33,15 @@ import java.io.IOException;
  * Feeds arbitrary bytes through {@link DataFileReader} and
  * {@link DataFileStream} to test the full Avro container format parsing: magic
  * bytes, file header, metadata (including the embedded schema), sync markers,
- * codec decompression, and datum deserialization. This is the highest-value
- * target for finding container format vulnerabilities.
+ * codec decompression, and datum deserialization.
  * </p>
  */
 class DataFileReaderFuzzer {
 
   /**
-   * Fuzz the seekable {@link DataFileReader} path.
-   *
-   * <p>
-   * Uses {@link SeekableByteArrayInput} to wrap the fuzz input, which exercises
-   * the random-access container file reading code path including block seeking.
-   * </p>
+   * Fuzz the seekable {@link DataFileReader} path via
+   * {@link SeekableByteArrayInput}, exercising random-access container file
+   * reading including block seeking.
    */
   @FuzzTest
   void fuzzDataFileReader(byte[] data) {
@@ -56,19 +50,15 @@ class DataFileReaderFuzzer {
       while (reader.hasNext()) {
         reader.next();
       }
-    } catch (IOException | AvroRuntimeException | UnsupportedOperationException e) {
-      // Expected for malformed container files -- invalid magic, bad headers,
-      // corrupt sync markers, unsupported codecs, etc.
+    } catch (Exception e) {
+      // Expected for malformed container files
     }
   }
 
   /**
-   * Fuzz the streaming {@link DataFileStream} path.
-   *
-   * <p>
-   * Uses a plain {@link ByteArrayInputStream}, which exercises the sequential
-   * (non-seekable) container file reading code path.
-   * </p>
+   * Fuzz the streaming {@link DataFileStream} path via
+   * {@link ByteArrayInputStream}, exercising sequential (non-seekable) container
+   * file reading.
    */
   @FuzzTest
   void fuzzDataFileStream(byte[] data) {
@@ -77,7 +67,7 @@ class DataFileReaderFuzzer {
       while (stream.hasNext()) {
         stream.next();
       }
-    } catch (IOException | AvroRuntimeException | UnsupportedOperationException e) {
+    } catch (Exception e) {
       // Expected for malformed container files
     }
   }

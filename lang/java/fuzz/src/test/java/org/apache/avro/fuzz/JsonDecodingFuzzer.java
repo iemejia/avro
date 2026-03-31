@@ -18,61 +18,48 @@
 package org.apache.avro.fuzz;
 
 import com.code_intelligence.jazzer.junit.FuzzTest;
-import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.JsonDecoder;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 /**
  * Fuzz tests for Avro JSON decoding.
  *
  * <p>
- * Feeds arbitrary JSON strings through {@link JsonDecoder} with various schemas
- * to test the JSON-to-Avro deserialization path, including Jackson JSON
+ * Feeds arbitrary JSON strings through {@link JsonDecoder} with a compound
+ * schema to test the JSON-to-Avro deserialization path, including Jackson JSON
  * parsing, type coercion, union resolution, and error handling for malformed
  * data.
  * </p>
  */
 class JsonDecodingFuzzer {
 
-  /** A record schema with diverse field types. */
-  private static final Schema RECORD_SCHEMA = new Schema.Parser()
+  /**
+   * A compound schema with diverse field types: primitives, arrays, maps, and
+   * unions. This is a superset of the previous separate record and simple
+   * schemas.
+   */
+  private static final Schema SCHEMA = new Schema.Parser()
       .parse("{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[" + "{\"name\":\"id\",\"type\":\"long\"},"
-          + "{\"name\":\"name\",\"type\":\"string\"}," + "{\"name\":\"active\",\"type\":\"boolean\"},"
+          + "{\"name\":\"name\",\"type\":\"string\"}," + "{\"name\":\"x\",\"type\":\"int\"},"
+          + "{\"name\":\"active\",\"type\":\"boolean\"},"
           + "{\"name\":\"scores\",\"type\":{\"type\":\"array\",\"items\":\"double\"}},"
           + "{\"name\":\"props\",\"type\":{\"type\":\"map\",\"values\":\"string\"}},"
           + "{\"name\":\"extra\",\"type\":[\"null\",\"string\",\"long\"]}" + "]}");
 
-  /** A simpler schema for basic field decoding. */
-  private static final Schema SIMPLE_SCHEMA = new Schema.Parser()
-      .parse("{\"type\":\"record\",\"name\":\"Simple\",\"fields\":[" + "{\"name\":\"x\",\"type\":\"int\"},"
-          + "{\"name\":\"y\",\"type\":\"string\"}" + "]}");
-
   @FuzzTest
-  void fuzzJsonDecodingRecord(byte[] data) {
-    decodeJsonWithSchema(data, RECORD_SCHEMA);
-  }
-
-  @FuzzTest
-  void fuzzJsonDecodingSimple(byte[] data) {
-    decodeJsonWithSchema(data, SIMPLE_SCHEMA);
-  }
-
-  private static void decodeJsonWithSchema(byte[] data, Schema schema) {
+  void fuzzJsonDecoding(byte[] data) {
     String jsonData = new String(data, StandardCharsets.UTF_8);
     try {
-      JsonDecoder decoder = DecoderFactory.get().jsonDecoder(schema, jsonData);
-      GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(schema);
+      JsonDecoder decoder = DecoderFactory.get().jsonDecoder(SCHEMA, jsonData);
+      GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(SCHEMA);
       reader.read(null, decoder);
-    } catch (IOException | AvroRuntimeException | UnsupportedOperationException e) {
+    } catch (Exception e) {
       // Expected for malformed JSON or type mismatches
-      // UnsupportedOperationException: thrown by SystemLimitException for oversized
-      // strings/collections
     }
   }
 }

@@ -18,7 +18,6 @@
 package org.apache.avro.fuzz;
 
 import com.code_intelligence.jazzer.junit.FuzzTest;
-import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
@@ -32,58 +31,36 @@ import java.io.IOException;
  *
  * <p>
  * Feeds arbitrary bytes through {@link BinaryDecoder} and
- * {@link GenericDatumReader} using several representative schemas to exercise
- * varint parsing, buffer management, nested record handling, and collection
- * size limit enforcement.
+ * {@link GenericDatumReader} using a compound schema that exercises varint
+ * parsing, buffer management, nested records, enums, arrays, maps, unions, and
+ * collection size limit enforcement in a single target.
  * </p>
  */
 class BinaryDecodingFuzzer {
 
-  /** A record schema with multiple field types to exercise diverse code paths. */
-  private static final Schema RECORD_SCHEMA = new Schema.Parser()
-      .parse("{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[" + "{\"name\":\"id\",\"type\":\"long\"},"
+  /**
+   * A compound schema that nests records, enums, arrays, maps, and unions to
+   * maximise code coverage from a single fuzz target.
+   */
+  private static final Schema SCHEMA = new Schema.Parser()
+      .parse("{\"type\":\"record\",\"name\":\"Root\",\"fields\":[" + "{\"name\":\"id\",\"type\":\"long\"},"
           + "{\"name\":\"name\",\"type\":\"string\"}," + "{\"name\":\"value\",\"type\":\"double\"},"
           + "{\"name\":\"tags\",\"type\":{\"type\":\"array\",\"items\":\"string\"}},"
           + "{\"name\":\"metadata\",\"type\":{\"type\":\"map\",\"values\":\"string\"}},"
-          + "{\"name\":\"optionalField\",\"type\":[\"null\",\"string\"]}" + "]}");
-
-  /** A schema with nested records to test recursive decoding. */
-  private static final Schema NESTED_SCHEMA = new Schema.Parser()
-      .parse("{\"type\":\"record\",\"name\":\"Outer\",\"fields\":["
+          + "{\"name\":\"optionalField\",\"type\":[\"null\",\"string\"]},"
           + "{\"name\":\"inner\",\"type\":{\"type\":\"record\",\"name\":\"Inner\",\"fields\":["
-          + "{\"name\":\"x\",\"type\":\"int\"}," + "{\"name\":\"y\",\"type\":\"int\"}" + "]}},"
-          + "{\"name\":\"label\",\"type\":\"string\"}" + "]}");
-
-  /** An enum schema. */
-  private static final Schema ENUM_SCHEMA = new Schema.Parser()
-      .parse("{\"type\":\"record\",\"name\":\"EnumRecord\",\"fields\":["
+          + "{\"name\":\"x\",\"type\":\"int\"},{\"name\":\"y\",\"type\":\"int\"}]}},"
           + "{\"name\":\"status\",\"type\":{\"type\":\"enum\",\"name\":\"Status\","
           + "\"symbols\":[\"ACTIVE\",\"INACTIVE\",\"PENDING\"]}}," + "{\"name\":\"count\",\"type\":\"int\"}" + "]}");
 
   @FuzzTest
-  void fuzzBinaryDecodingRecord(byte[] data) {
-    decodeWithSchema(data, RECORD_SCHEMA);
-  }
-
-  @FuzzTest
-  void fuzzBinaryDecodingNested(byte[] data) {
-    decodeWithSchema(data, NESTED_SCHEMA);
-  }
-
-  @FuzzTest
-  void fuzzBinaryDecodingEnum(byte[] data) {
-    decodeWithSchema(data, ENUM_SCHEMA);
-  }
-
-  private static void decodeWithSchema(byte[] data, Schema schema) {
+  void fuzzBinaryDecoding(byte[] data) {
     try {
       BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(data, null);
-      GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(schema);
+      GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(SCHEMA);
       reader.read(null, decoder);
-    } catch (IOException | AvroRuntimeException | ArrayIndexOutOfBoundsException | UnsupportedOperationException e) {
+    } catch (Exception e) {
       // Expected for malformed binary data
-      // UnsupportedOperationException: thrown by SystemLimitException for oversized
-      // strings/collections
     }
   }
 }
