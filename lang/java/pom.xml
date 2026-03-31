@@ -90,6 +90,7 @@
     <module>grpc</module>
     <module>integration-test</module>
     <module>perf</module>
+    <module>fuzz</module>
     <module>interop-data-test</module>
     <module>java17-test</module>
   </modules>
