@@ -676,4 +676,19 @@ public class TestSchema {
       assertTrue(ate.getMessage().contains(badValue));
     }
   }
+
+  /**
+   * Regression test: Schema.parse() on certain malformed inputs used to throw
+   * {@link NullPointerException} from {@link ParseContext#resolve} instead of a
+   * proper Avro exception. After the fix, it should throw an
+   * {@link AvroTypeException} (or another AvroRuntimeException subclass).
+   */
+  @Test
+  void parseMalformedInputDoesNotThrowNPE() {
+    // This input triggers creation of an unresolved named schema reference
+    // that cannot be found in oldSchemas, previously causing NPE at
+    // ParseContext.resolve() line 330.
+    String malformed = "\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"";
+    assertThrows(AvroRuntimeException.class, () -> Schema.parse(malformed));
+  }
 }

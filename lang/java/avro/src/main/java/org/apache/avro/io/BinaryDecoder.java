@@ -295,6 +295,7 @@ public class BinaryDecoder extends Decoder {
   @Override
   public Utf8 readString(Utf8 old) throws IOException {
     int length = SystemLimitException.checkMaxStringLength(readLong());
+    ensureAvailableBytes(length);
     Utf8 result = (old != null ? old : new Utf8());
     result.setByteLength(length);
     if (0 != length) {
@@ -318,6 +319,7 @@ public class BinaryDecoder extends Decoder {
   @Override
   public ByteBuffer readBytes(ByteBuffer old) throws IOException {
     int length = SystemLimitException.checkMaxBytesLength(readLong());
+    ensureAvailableBytes(length);
     final ByteBuffer result;
     if (old != null && length <= old.capacity()) {
       result = old;
@@ -442,6 +444,9 @@ public class BinaryDecoder extends Decoder {
   @Override
   public long readArrayStart() throws IOException {
     collectionCount = SystemLimitException.checkMaxCollectionLength(doReadItemCount());
+    // Each array element is at least 1 byte, so the item count is a lower bound
+    // on the bytes required. Reject early if a byte-array source is too short.
+    ensureAvailableBytes((int) collectionCount);
     return collectionCount;
   }
 
@@ -449,6 +454,7 @@ public class BinaryDecoder extends Decoder {
   public long arrayNext() throws IOException {
     long length = doReadItemCount();
     collectionCount = SystemLimitException.checkMaxCollectionLength(collectionCount, length);
+    ensureAvailableBytes((int) length);
     return length;
   }
 
@@ -460,6 +466,7 @@ public class BinaryDecoder extends Decoder {
   @Override
   public long readMapStart() throws IOException {
     collectionCount = SystemLimitException.checkMaxCollectionLength(doReadItemCount());
+    ensureAvailableBytes((int) collectionCount);
     return collectionCount;
   }
 
@@ -467,6 +474,7 @@ public class BinaryDecoder extends Decoder {
   public long mapNext() throws IOException {
     long length = doReadItemCount();
     collectionCount = SystemLimitException.checkMaxCollectionLength(collectionCount, length);
+    ensureAvailableBytes((int) length);
     return length;
   }
 
@@ -527,6 +535,31 @@ public class BinaryDecoder extends Decoder {
       source.compactAndFill(buf, pos, minPos, remaining);
       if (pos >= limit)
         throw new EOFException();
+    }
+  }
+
+  /**
+   * Validates that the source has at least {@code length} bytes remaining before
+   * allocating a buffer of that size. This prevents a denial-of-service attack
+   * where a crafted varint claims a huge length, causing an
+   * {@link OutOfMemoryError} on allocation before the read discovers there are
+   * too few bytes.
+   * <p>
+   * For byte-array-backed sources the remaining count is exact, so this check is
+   * definitive. For stream-backed sources the remaining count is unknown and this
+   * method is a no-op (the subsequent read will still throw {@link EOFException}
+   * if the stream is too short, but only after the allocation has occurred).
+   *
+   * @param length the number of bytes about to be allocated
+   * @throws EOFException if the source is known to have fewer bytes remaining
+   */
+  private void ensureAvailableBytes(int length) throws EOFException {
+    if (source != null && length > 0) {
+      int remaining = source.remainingBytes();
+      if (remaining >= 0 && length > remaining) {
+        throw new EOFException(
+            "Attempted to read " + length + " bytes, but only " + remaining + " bytes are available");
+      }
     }
   }
 
@@ -663,6 +696,15 @@ public class BinaryDecoder extends Decoder {
     }
 
     abstract boolean isEof();
+
+    /**
+     * Returns the total number of bytes remaining that can be read from this source
+     * (including any buffered bytes), or {@code -1} if the total is unknown.
+     * Byte-array-backed sources return an exact count; stream-backed sources return
+     * {@code -1} because {@link InputStream#available()} does not reliably report
+     * the total remaining bytes.
+     */
+    protected abstract int remainingBytes();
 
     protected void attach(int bufferSize, BinaryDecoder decoder) {
       decoder.buf = new byte[bufferSize];
@@ -911,6 +953,11 @@ public class BinaryDecoder extends Decoder {
     }
 
     @Override
+    protected int remainingBytes() {
+      return -1; // unknown for stream-backed sources
+    }
+
+    @Override
     public void close() throws IOException {
       in.close();
     }
@@ -1027,6 +1074,11 @@ public class BinaryDecoder extends Decoder {
     public boolean isEof() {
       int remaining = ba.getLim() - ba.getPos();
       return (remaining == 0);
+    }
+
+    @Override
+    protected int remainingBytes() {
+      return ba.getLim() - ba.getPos();
     }
   }
 }

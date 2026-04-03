@@ -417,6 +417,32 @@ public class TestBinaryDecoder {
     }
   }
 
+  /**
+   * Verify that a byte-array-backed decoder rejects a string whose varint length
+   * exceeds the remaining bytes, throwing {@link EOFException} <em>before</em>
+   * allocating the buffer. This is a regression test for CVE-style OOM/DoS where
+   * a crafted varint could trigger a multi-gigabyte allocation from a tiny input.
+   */
+  @Test
+  public void testStringLengthExceedsAvailableBytes() throws IOException {
+    // Encode a varint claiming 10_000_000 bytes of string data, but supply none.
+    // The byte-array-backed decoder knows it has only a few bytes left after
+    // the varint, so ensureAvailableBytes must throw EOFException before
+    // allocating.
+    BinaryDecoder bd = newDecoder(false, 10_000_000L);
+    Assertions.assertThrows(EOFException.class, () -> bd.readString(null));
+  }
+
+  /**
+   * Same as {@link #testStringLengthExceedsAvailableBytes()} but for
+   * {@link BinaryDecoder#readBytes(ByteBuffer)}.
+   */
+  @Test
+  public void testBytesLengthExceedsAvailableBytes() throws IOException {
+    BinaryDecoder bd = newDecoder(false, 10_000_000L);
+    Assertions.assertThrows(EOFException.class, () -> bd.readBytes(null));
+  }
+
   @ParameterizedTest
   @ValueSource(booleans = { true, false })
   public void testBytesNegativeLength(boolean useDirect) throws IOException {
@@ -451,7 +477,8 @@ public class TestBinaryDecoder {
   @ParameterizedTest
   @ValueSource(booleans = { true, false })
   public void testArrayVmMaxSize(boolean useDirect) throws IOException {
-    // At start
+    // At start — count exceeds VM limit, so the limit check fires first for both
+    // decoder types.
     Exception ex = Assertions.assertThrows(UnsupportedOperationException.class,
         () -> this.newDecoder(useDirect, MAX_ARRAY_VM_LIMIT + 1).readArrayStart());
     Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
@@ -461,27 +488,38 @@ public class TestBinaryDecoder {
         () -> this.newDecoder(useDirect, MAX_ARRAY_VM_LIMIT + 1).arrayNext());
     Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
 
-    // An OK reads followed by an overflow
-    Decoder bd = newDecoder(useDirect, MAX_ARRAY_VM_LIMIT - 100, Long.MAX_VALUE);
-    Assertions.assertEquals(MAX_ARRAY_VM_LIMIT - 100, bd.readArrayStart());
-    ex = Assertions.assertThrows(UnsupportedOperationException.class, bd::arrayNext);
-    Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
+    if (useDirect) {
+      // Stream-backed decoders cannot validate available bytes, so large counts
+      // that are within the VM limit are returned and the overflow is only
+      // detected on subsequent reads.
 
-    // Two OK reads followed by going over the VM limit.
-    bd = newDecoder(useDirect, MAX_ARRAY_VM_LIMIT - 100, 100, 1);
-    Assertions.assertEquals(MAX_ARRAY_VM_LIMIT - 100, bd.readArrayStart());
-    Assertions.assertEquals(100, bd.arrayNext());
-    ex = Assertions.assertThrows(UnsupportedOperationException.class, bd::arrayNext);
-    Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
+      // An OK reads followed by an overflow
+      Decoder bd = newDecoder(useDirect, MAX_ARRAY_VM_LIMIT - 100, Long.MAX_VALUE);
+      Assertions.assertEquals(MAX_ARRAY_VM_LIMIT - 100, bd.readArrayStart());
+      ex = Assertions.assertThrows(UnsupportedOperationException.class, bd::arrayNext);
+      Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
 
-    // Two OK reads followed by going over the VM limit, where negative numbers are
-    // followed by the byte length of the items. For testing, the 999 values are
-    // read but ignored.
-    bd = newDecoder(useDirect, 100 - MAX_ARRAY_VM_LIMIT, 999, -100, 999, 1);
-    Assertions.assertEquals(MAX_ARRAY_VM_LIMIT - 100, bd.readArrayStart());
-    Assertions.assertEquals(100, bd.arrayNext());
-    ex = Assertions.assertThrows(UnsupportedOperationException.class, bd::arrayNext);
-    Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
+      // Two OK reads followed by going over the VM limit.
+      bd = newDecoder(useDirect, MAX_ARRAY_VM_LIMIT - 100, 100, 1);
+      Assertions.assertEquals(MAX_ARRAY_VM_LIMIT - 100, bd.readArrayStart());
+      Assertions.assertEquals(100, bd.arrayNext());
+      ex = Assertions.assertThrows(UnsupportedOperationException.class, bd::arrayNext);
+      Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
+
+      // Two OK reads followed by going over the VM limit, where negative numbers are
+      // followed by the byte length of the items. For testing, the 999 values are
+      // read but ignored.
+      bd = newDecoder(useDirect, 100 - MAX_ARRAY_VM_LIMIT, 999, -100, 999, 1);
+      Assertions.assertEquals(MAX_ARRAY_VM_LIMIT - 100, bd.readArrayStart());
+      Assertions.assertEquals(100, bd.arrayNext());
+      ex = Assertions.assertThrows(UnsupportedOperationException.class, bd::arrayNext);
+      Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
+    } else {
+      // Byte-array-backed decoders detect that the claimed count exceeds the
+      // remaining bytes and throw EOFException before any allocation.
+      Assertions.assertThrows(EOFException.class,
+          () -> newDecoder(false, MAX_ARRAY_VM_LIMIT - 100, Long.MAX_VALUE).readArrayStart());
+    }
   }
 
   @ParameterizedTest
@@ -494,21 +532,30 @@ public class TestBinaryDecoder {
           () -> newDecoder(useDirect, MAX_ARRAY_VM_LIMIT + 1).readArrayStart());
       Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
 
-      // Two OK reads followed by going over the custom limit.
-      Decoder bd = newDecoder(useDirect, 118, 10, 1);
-      Assertions.assertEquals(118, bd.readArrayStart());
-      Assertions.assertEquals(10, bd.arrayNext());
-      ex = Assertions.assertThrows(SystemLimitException.class, bd::arrayNext);
-      Assertions.assertEquals("Collection length 129 exceeds maximum allowed", ex.getMessage());
+      if (useDirect) {
+        // Stream-backed decoders cannot validate available bytes, so counts that
+        // are within the custom limit are accepted.
 
-      // Two OK reads followed by going over the VM limit, where negative numbers are
-      // followed by the byte length of the items. For testing, the 999 values are
-      // read but ignored.
-      bd = newDecoder(useDirect, -118, 999, -10, 999, 1);
-      Assertions.assertEquals(118, bd.readArrayStart());
-      Assertions.assertEquals(10, bd.arrayNext());
-      ex = Assertions.assertThrows(SystemLimitException.class, bd::arrayNext);
-      Assertions.assertEquals("Collection length 129 exceeds maximum allowed", ex.getMessage());
+        // Two OK reads followed by going over the custom limit.
+        Decoder bd = newDecoder(useDirect, 118, 10, 1);
+        Assertions.assertEquals(118, bd.readArrayStart());
+        Assertions.assertEquals(10, bd.arrayNext());
+        ex = Assertions.assertThrows(SystemLimitException.class, bd::arrayNext);
+        Assertions.assertEquals("Collection length 129 exceeds maximum allowed", ex.getMessage());
+
+        // Two OK reads followed by going over the VM limit, where negative numbers are
+        // followed by the byte length of the items. For testing, the 999 values are
+        // read but ignored.
+        bd = newDecoder(useDirect, -118, 999, -10, 999, 1);
+        Assertions.assertEquals(118, bd.readArrayStart());
+        Assertions.assertEquals(10, bd.arrayNext());
+        ex = Assertions.assertThrows(SystemLimitException.class, bd::arrayNext);
+        Assertions.assertEquals("Collection length 129 exceeds maximum allowed", ex.getMessage());
+      } else {
+        // Byte-array-backed decoders detect that the claimed count exceeds the
+        // remaining bytes and throw EOFException before any allocation.
+        Assertions.assertThrows(EOFException.class, () -> newDecoder(false, 118, 10, 1).readArrayStart());
+      }
 
     } finally {
       System.clearProperty(SystemLimitException.MAX_COLLECTION_LENGTH_PROPERTY);
@@ -519,7 +566,7 @@ public class TestBinaryDecoder {
   @ParameterizedTest
   @ValueSource(booleans = { true, false })
   public void testMapVmMaxSize(boolean useDirect) throws IOException {
-    // At start
+    // At start — count exceeds VM limit, so the limit check fires first.
     Exception ex = Assertions.assertThrows(UnsupportedOperationException.class,
         () -> this.newDecoder(useDirect, MAX_ARRAY_VM_LIMIT + 1).readMapStart());
     Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
@@ -529,21 +576,28 @@ public class TestBinaryDecoder {
         () -> this.newDecoder(useDirect, MAX_ARRAY_VM_LIMIT + 1).mapNext());
     Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
 
-    // Two OK reads followed by going over the VM limit.
-    Decoder bd = newDecoder(useDirect, MAX_ARRAY_VM_LIMIT - 100, 100, 1);
-    Assertions.assertEquals(MAX_ARRAY_VM_LIMIT - 100, bd.readMapStart());
-    Assertions.assertEquals(100, bd.mapNext());
-    ex = Assertions.assertThrows(UnsupportedOperationException.class, bd::mapNext);
-    Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
+    if (useDirect) {
+      // Two OK reads followed by going over the VM limit.
+      Decoder bd = newDecoder(useDirect, MAX_ARRAY_VM_LIMIT - 100, 100, 1);
+      Assertions.assertEquals(MAX_ARRAY_VM_LIMIT - 100, bd.readMapStart());
+      Assertions.assertEquals(100, bd.mapNext());
+      ex = Assertions.assertThrows(UnsupportedOperationException.class, bd::mapNext);
+      Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
 
-    // Two OK reads followed by going over the VM limit, where negative numbers are
-    // followed by the byte length of the items. For testing, the 999 values are
-    // read but ignored.
-    bd = newDecoder(useDirect, 100 - MAX_ARRAY_VM_LIMIT, 999, -100, 999, 1);
-    Assertions.assertEquals(MAX_ARRAY_VM_LIMIT - 100, bd.readMapStart());
-    Assertions.assertEquals(100, bd.mapNext());
-    ex = Assertions.assertThrows(UnsupportedOperationException.class, bd::mapNext);
-    Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
+      // Two OK reads followed by going over the VM limit, where negative numbers are
+      // followed by the byte length of the items. For testing, the 999 values are
+      // read but ignored.
+      bd = newDecoder(useDirect, 100 - MAX_ARRAY_VM_LIMIT, 999, -100, 999, 1);
+      Assertions.assertEquals(MAX_ARRAY_VM_LIMIT - 100, bd.readMapStart());
+      Assertions.assertEquals(100, bd.mapNext());
+      ex = Assertions.assertThrows(UnsupportedOperationException.class, bd::mapNext);
+      Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
+    } else {
+      // Byte-array-backed decoders detect that the claimed count exceeds the
+      // remaining bytes and throw EOFException.
+      Assertions.assertThrows(EOFException.class,
+          () -> newDecoder(false, MAX_ARRAY_VM_LIMIT - 100, 100, 1).readMapStart());
+    }
   }
 
   @ParameterizedTest
@@ -556,21 +610,27 @@ public class TestBinaryDecoder {
           () -> newDecoder(useDirect, MAX_ARRAY_VM_LIMIT + 1).readMapStart());
       Assertions.assertEquals(ERROR_VM_LIMIT_COLLECTION, ex.getMessage());
 
-      // Two OK reads followed by going over the custom limit.
-      Decoder bd = newDecoder(useDirect, 118, 10, 1);
-      Assertions.assertEquals(118, bd.readMapStart());
-      Assertions.assertEquals(10, bd.mapNext());
-      ex = Assertions.assertThrows(SystemLimitException.class, bd::mapNext);
-      Assertions.assertEquals("Collection length 129 exceeds maximum allowed", ex.getMessage());
+      if (useDirect) {
+        // Two OK reads followed by going over the custom limit.
+        Decoder bd = newDecoder(useDirect, 118, 10, 1);
+        Assertions.assertEquals(118, bd.readMapStart());
+        Assertions.assertEquals(10, bd.mapNext());
+        ex = Assertions.assertThrows(SystemLimitException.class, bd::mapNext);
+        Assertions.assertEquals("Collection length 129 exceeds maximum allowed", ex.getMessage());
 
-      // Two OK reads followed by going over the VM limit, where negative numbers are
-      // followed by the byte length of the items. For testing, the 999 values are
-      // read but ignored.
-      bd = newDecoder(useDirect, -118, 999, -10, 999, 1);
-      Assertions.assertEquals(118, bd.readMapStart());
-      Assertions.assertEquals(10, bd.mapNext());
-      ex = Assertions.assertThrows(SystemLimitException.class, bd::mapNext);
-      Assertions.assertEquals("Collection length 129 exceeds maximum allowed", ex.getMessage());
+        // Two OK reads followed by going over the VM limit, where negative numbers are
+        // followed by the byte length of the items. For testing, the 999 values are
+        // read but ignored.
+        bd = newDecoder(useDirect, -118, 999, -10, 999, 1);
+        Assertions.assertEquals(118, bd.readMapStart());
+        Assertions.assertEquals(10, bd.mapNext());
+        ex = Assertions.assertThrows(SystemLimitException.class, bd::mapNext);
+        Assertions.assertEquals("Collection length 129 exceeds maximum allowed", ex.getMessage());
+      } else {
+        // Byte-array-backed decoders detect that the claimed count exceeds the
+        // remaining bytes and throw EOFException.
+        Assertions.assertThrows(EOFException.class, () -> newDecoder(false, 118, 10, 1).readMapStart());
+      }
 
     } finally {
       System.clearProperty(SystemLimitException.MAX_COLLECTION_LENGTH_PROPERTY);
