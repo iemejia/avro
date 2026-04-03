@@ -546,9 +546,9 @@ public class BinaryDecoder extends Decoder {
    * too few bytes.
    * <p>
    * For byte-array-backed sources the remaining count is exact, so this check is
-   * definitive. For stream-backed sources the remaining count is unknown and this
-   * method is a no-op (the subsequent read will still throw {@link EOFException}
-   * if the stream is too short, but only after the allocation has occurred).
+   * definitive. For stream-backed sources the check uses buffered bytes plus
+   * {@link InputStream#available()}, which is a reliable lower bound for the
+   * finite streams used by {@code DataFileReader} and {@code DataFileStream}.
    *
    * @param length the number of bytes about to be allocated
    * @throws EOFException if the source is known to have fewer bytes remaining
@@ -700,9 +700,11 @@ public class BinaryDecoder extends Decoder {
     /**
      * Returns the total number of bytes remaining that can be read from this source
      * (including any buffered bytes), or {@code -1} if the total is unknown.
-     * Byte-array-backed sources return an exact count; stream-backed sources return
-     * {@code -1} because {@link InputStream#available()} does not reliably report
-     * the total remaining bytes.
+     * Byte-array-backed sources return an exact count. Stream-backed sources return
+     * the sum of buffered bytes and {@link InputStream#available()}, which is a
+     * reliable lower bound for the finite, in-memory or file-backed streams used by
+     * {@code DataFileReader} and {@code DataFileStream}. Returns {@code -1} only
+     * when {@code available()} throws.
      */
     protected abstract int remainingBytes();
 
@@ -954,7 +956,11 @@ public class BinaryDecoder extends Decoder {
 
     @Override
     protected int remainingBytes() {
-      return -1; // unknown for stream-backed sources
+      try {
+        return (ba.getLim() - ba.getPos()) + in.available();
+      } catch (IOException e) {
+        return -1;
+      }
     }
 
     @Override

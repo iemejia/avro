@@ -81,6 +81,7 @@ Implementation details:
 - The check is called in: `readString()`, `readBytes()`, `readArrayStart()`, `arrayNext()`, `readMapStart()`, `mapNext()`
 - For `DirectBinaryDecoder`, `source` is always null, so the check is a no-op (correct — it has no buffered byte source)
 - For arrays/maps, each item must be at least 1 byte, so item count serves as a valid lower bound for bytes needed
+- `InputStreamByteSource.remainingBytes()` returns `buffered + in.available()`, which is exact for the finite, in-memory streams used by `DataFileReader` and `DataFileStream` (`SeekableInputStream.available()` and `ByteArrayInputStream.available()` both report exact remaining). When `available()` throws, returns -1 (check skipped). This is safe because the buffering `BinaryDecoder` is only used for file/container reading — network/RPC streams use `DirectBinaryDecoder` which bypasses this check entirely.
 
 This approach was chosen over lowering the default `SystemLimitException` limits because it does not change behavior for production users — only clearly impossible allocations (where the claimed length exceeds the actual data) are rejected.
 
@@ -92,13 +93,15 @@ This approach was chosen over lowering the default `SystemLimitException` limits
 ## Verification
 
 ### Test suite
-All 3,415 tests in the `avro` module pass after both fixes.
+All 3,415 tests in the `avro` module pass after all fixes.
 
 ### Fuzzer re-runs (post-fix)
 - **BinaryDecodingFuzzer**: ~974K iterations, 0 crashes (previously crashed within ~4K iterations with OOM)
 - **SchemaFuzzer**: ~1M iterations, 0 crashes (previously found NPE)
+- **DataFileReaderFuzzer**: ~684K iterations, 0 crashes (previously crashed within ~4K iterations with OOM via `DataFileStream.initialize()`)
+- **JsonDecodingFuzzer**: ~1M iterations, 0 crashes
 
-Both bugs are confirmed fixed.
+All bugs are confirmed fixed.
 
 ## What Each Fuzz Test Does
 
