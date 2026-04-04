@@ -1,0 +1,1 @@
+{"type":"record","name":"SeedRecord","fields":[{"name":"id","type":"long"},{"name":"name","type":"string"},{"name":"createdDate","type":{"type":"int","logicalType":"date"}},{"name":"next","type":["null","SeedRecord"],"default":null}]}

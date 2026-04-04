@@ -140,8 +140,7 @@ public class DataFileStream<D> implements Iterator<D>, Iterable<D>, Closeable {
 
     // finalize the header
     header.metaKeyList = Collections.unmodifiableList(header.metaKeyList);
-    header.schema = new Schema.Parser(NameValidator.NO_VALIDATION).setValidateDefaults(false)
-        .parse(getMetaString(DataFileConstants.SCHEMA));
+    header.schema = parseHeaderSchema();
     this.codec = resolveCodec();
     reader.setSchema(header.schema);
   }
@@ -196,6 +195,18 @@ public class DataFileStream<D> implements Iterator<D>, Iterable<D>, Closeable {
   /** Return the value of a metadata property. */
   public long getMetaLong(String key) {
     return Long.parseLong(getMetaString(key));
+  }
+
+  private Schema parseHeaderSchema() throws IOException {
+    String schemaJson = getMetaString(DataFileConstants.SCHEMA);
+    if (schemaJson == null) {
+      throw new IOException("Missing required metadata: " + DataFileConstants.SCHEMA);
+    }
+    try {
+      return new Schema.Parser(NameValidator.NO_VALIDATION).setValidateDefaults(false).parse(schemaJson);
+    } catch (AvroRuntimeException e) {
+      throw new IOException("Invalid schema in metadata: " + DataFileConstants.SCHEMA, e);
+    }
   }
 
   /**

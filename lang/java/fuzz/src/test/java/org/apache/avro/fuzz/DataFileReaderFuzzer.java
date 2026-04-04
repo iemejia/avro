@@ -25,6 +25,7 @@ import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 
 /**
  * Fuzz tests for Avro data file (container format) reading.
@@ -50,8 +51,12 @@ class DataFileReaderFuzzer {
       while (reader.hasNext()) {
         reader.next();
       }
-    } catch (Exception e) {
+    } catch (IOException e) {
       // Expected for malformed container files
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedDecodingFailure(e)) {
+        throw e;
+      }
     }
   }
 
@@ -67,8 +72,12 @@ class DataFileReaderFuzzer {
       while (stream.hasNext()) {
         stream.next();
       }
-    } catch (Exception e) {
+    } catch (IOException e) {
       // Expected for malformed container files
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedDecodingFailure(e)) {
+        throw e;
+      }
     }
   }
 }

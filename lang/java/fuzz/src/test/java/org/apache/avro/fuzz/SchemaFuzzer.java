@@ -17,30 +17,30 @@
  */
 package org.apache.avro.fuzz;
 
+import com.code_intelligence.jazzer.api.FuzzedDataProvider;
 import com.code_intelligence.jazzer.junit.FuzzTest;
-import org.apache.avro.Schema;
-
-import java.nio.charset.StandardCharsets;
+import org.apache.avro.SchemaParser;
 
 /**
  * Fuzz tests for Avro schema parsing.
  *
  * <p>
- * Targets {@link Schema#parse(String, boolean)} with arbitrary input and name
- * validation enabled. Any exception is treated as expected behavior for invalid
- * input; only JVM-level errors (e.g. {@link StackOverflowError}) escape and are
- * reported as real findings.
+ * Targets {@link SchemaParser#parse(CharSequence)} with mostly structured
+ * input. Expected parse failures are swallowed, but unexpected runtime failures
+ * are allowed to escape so Jazzer can report them as real findings.
  * </p>
  */
 class SchemaFuzzer {
 
   @FuzzTest
-  void fuzzSchemaParse(byte[] data) {
-    String schemaJson = new String(data, StandardCharsets.UTF_8);
+  void fuzzSchemaParse(FuzzedDataProvider data) {
+    String schemaJson = FuzzSupport.buildSchemaInput(data);
     try {
-      Schema.parse(schemaJson, true);
-    } catch (Exception e) {
-      // Expected for invalid schema input
+      new SchemaParser().parse(schemaJson).mainSchema();
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedSchemaFailure(e)) {
+        throw e;
+      }
     }
   }
 }
