@@ -23,7 +23,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
 /**
@@ -50,11 +49,14 @@ class BinaryDecodingFuzzer {
 
   private void fuzz(byte[] data, boolean direct) {
     try {
-      BinaryDecoder decoder = direct ? DecoderFactory.get().directBinaryDecoder(new ByteArrayInputStream(data), null)
+      BinaryDecoder decoder = direct ? DecoderFactory.get().directBinaryDecoder(FuzzSupport.shortReadStream(data), null)
           : DecoderFactory.get().binaryDecoder(data, null);
       GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(FuzzSupport.BINARY_WRITER_SCHEMA,
           FuzzSupport.BINARY_READER_SCHEMA);
       reader.read(null, decoder);
+      if (!direct && !decoder.isEnd()) {
+        throw new AssertionError("Buffered binary decoder left trailing bytes unread");
+      }
     } catch (IOException e) {
       // Expected for malformed binary data
     } catch (RuntimeException e) {

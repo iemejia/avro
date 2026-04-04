@@ -60,6 +60,22 @@ class DataFileReaderFuzzer {
     }
   }
 
+  @FuzzTest
+  void fuzzDataFileReaderWithResolution(byte[] data) {
+    try (DataFileReader<GenericRecord> reader = new DataFileReader<>(new SeekableByteArrayInput(data),
+        new GenericDatumReader<>(null, FuzzSupport.BINARY_READER_SCHEMA))) {
+      while (reader.hasNext()) {
+        reader.next();
+      }
+    } catch (IOException e) {
+      // Expected for malformed container files
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedDecodingFailure(e)) {
+        throw e;
+      }
+    }
+  }
+
   /**
    * Fuzz the streaming {@link DataFileStream} path via
    * {@link ByteArrayInputStream}, exercising sequential (non-seekable) container
@@ -69,6 +85,22 @@ class DataFileReaderFuzzer {
   void fuzzDataFileStream(byte[] data) {
     try (DataFileStream<GenericRecord> stream = new DataFileStream<>(new ByteArrayInputStream(data),
         new GenericDatumReader<>())) {
+      while (stream.hasNext()) {
+        stream.next();
+      }
+    } catch (IOException e) {
+      // Expected for malformed container files
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedDecodingFailure(e)) {
+        throw e;
+      }
+    }
+  }
+
+  @FuzzTest
+  void fuzzDataFileStreamWithResolution(byte[] data) {
+    try (DataFileStream<GenericRecord> stream = new DataFileStream<>(new ByteArrayInputStream(data),
+        new GenericDatumReader<>(null, FuzzSupport.BINARY_READER_SCHEMA))) {
       while (stream.hasNext()) {
         stream.next();
       }

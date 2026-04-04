@@ -25,6 +25,11 @@ import org.apache.avro.SchemaParseException;
 import org.apache.avro.SystemLimitException;
 import org.apache.avro.UnresolvedUnionException;
 
+import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+
 final class FuzzSupport {
   static final Schema BINARY_WRITER_SCHEMA = new Schema.Parser()
       .parse("{\"type\":\"record\",\"name\":\"WriterRoot\",\"fields\":[" + "{\"name\":\"id\",\"type\":\"long\"},"
@@ -67,8 +72,20 @@ final class FuzzSupport {
 
   static boolean isExpectedDecodingFailure(RuntimeException exception) {
     return exception instanceof AvroTypeException || exception instanceof SystemLimitException
-        || exception instanceof UnresolvedUnionException || exception instanceof IllegalArgumentException
-        || exception instanceof UnsupportedOperationException || isExpectedAvroRuntimeFailure(exception);
+        || exception instanceof UnresolvedUnionException || isExpectedDecodingIllegalArgument(exception)
+        || isExpectedUnsupportedOperation(exception) || isExpectedAvroRuntimeFailure(exception);
+  }
+
+  static InputStream shortReadStream(byte[] data) {
+    return new FilterInputStream(new ByteArrayInputStream(data)) {
+      @Override
+      public int read(byte[] buffer, int off, int len) throws IOException {
+        if (len <= 0) {
+          return super.read(buffer, off, len);
+        }
+        return super.read(buffer, off, Math.min(len, 3));
+      }
+    };
   }
 
   static String buildSchemaInput(FuzzedDataProvider data) {
@@ -136,6 +153,29 @@ final class FuzzSupport {
 
     return message.startsWith("Malformed data.") || message.startsWith("Unknown datum type")
         || message.startsWith("Not an array") || message.startsWith("Not a map") || message.startsWith("No match for ");
+  }
+
+  private static boolean isExpectedDecodingIllegalArgument(RuntimeException exception) {
+    if (!(exception instanceof IllegalArgumentException)) {
+      return false;
+    }
+
+    String message = exception.getMessage();
+    if (message == null) {
+      return false;
+    }
+
+    return message.contains("Invalid UTF-8") || message.contains("fromIndex") || message.contains("toIndex")
+        || message.contains("length") || message.contains("bound");
+  }
+
+  private static boolean isExpectedUnsupportedOperation(RuntimeException exception) {
+    if (!(exception instanceof UnsupportedOperationException)) {
+      return false;
+    }
+
+    String message = exception.getMessage();
+    return message != null && message.startsWith("Cannot read ");
   }
 
   private static String escapeJson(String value) {

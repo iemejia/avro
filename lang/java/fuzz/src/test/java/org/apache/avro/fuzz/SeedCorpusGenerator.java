@@ -38,9 +38,17 @@ class SeedCorpusGenerator {
   @Test
   void generateSeeds() throws IOException {
     writeBytes("BinaryDecodingFuzzerInputs/fuzzBinaryDecoding/seed-valid-record.bin", writeBinaryRecord());
+    writeBytes("BinaryDecodingFuzzerInputs/fuzzBinaryDecoding/seed-valid-record-single-node.bin",
+        writeBinaryRecordWithSingleNode());
     writeBytes("BinaryDecodingFuzzerInputs/fuzzDirectBinaryDecoding/seed-valid-record.bin", writeBinaryRecord());
+    writeBytes("BinaryDecodingFuzzerInputs/fuzzDirectBinaryDecoding/seed-valid-record-single-node.bin",
+        writeBinaryRecordWithSingleNode());
     writeBytes("DataFileReaderFuzzerInputs/fuzzDataFileReader/seed-valid-container.avro", writeContainerFile());
+    writeBytes("DataFileReaderFuzzerInputs/fuzzDataFileReaderWithResolution/seed-valid-container.avro",
+        writeContainerFile());
     writeBytes("DataFileReaderFuzzerInputs/fuzzDataFileStream/seed-valid-container.avro", writeContainerFile());
+    writeBytes("DataFileReaderFuzzerInputs/fuzzDataFileStreamWithResolution/seed-valid-container.avro",
+        writeContainerFile());
   }
 
   private static byte[] writeBinaryRecord() throws IOException {
@@ -62,6 +70,15 @@ class SeedCorpusGenerator {
     return output.toByteArray();
   }
 
+  private static byte[] writeBinaryRecordWithSingleNode() throws IOException {
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(output, null);
+    GenericDatumWriter<GenericRecord> writer = new GenericDatumWriter<>(FuzzSupport.BINARY_WRITER_SCHEMA);
+    writer.write(sampleBinaryRecordWithSingleNode(), encoder);
+    encoder.flush();
+    return output.toByteArray();
+  }
+
   private static GenericRecord sampleBinaryRecord() {
     GenericRecord nodeTail = new GenericData.Record(NODE_SCHEMA);
     nodeTail.put("value", "tail");
@@ -79,6 +96,22 @@ class SeedCorpusGenerator {
     record.put("hash",
         new GenericData.Fixed(FuzzSupport.BINARY_WRITER_SCHEMA.getField("hash").schema(), new byte[] { 1, 2, 3, 4 }));
     record.put("node", nodeHead);
+    return record;
+  }
+
+  private static GenericRecord sampleBinaryRecordWithSingleNode() {
+    GenericRecord node = new GenericData.Record(NODE_SCHEMA);
+    node.put("value", "solo");
+    node.put("next", null);
+
+    GenericRecord record = new GenericData.Record(FuzzSupport.BINARY_WRITER_SCHEMA);
+    record.put("id", 11L);
+    record.put("legacyName", "seed-single");
+    record.put("createdDate", 1);
+    record.put("payload", java.nio.ByteBuffer.wrap(new byte[0]));
+    record.put("hash",
+        new GenericData.Fixed(FuzzSupport.BINARY_WRITER_SCHEMA.getField("hash").schema(), new byte[] { 9, 8, 7, 6 }));
+    record.put("node", node);
     return record;
   }
 

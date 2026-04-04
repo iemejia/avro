@@ -31,6 +31,25 @@ The module is wired into `lang/java/pom.xml` and can be run in regression or con
 - **Impact**: tiny hostile inputs could trigger huge allocations before EOF was detected
 - **Status**: Fixed
 
+### Bug 3: `NullPointerException` for missing container schema metadata
+
+- **Severity**: Medium
+- **Area**: `DataFileStream.initialize()` / `DataFileReader` header parsing
+- **Impact**: malformed object container files missing `avro.schema` metadata could throw `NullPointerException` instead of a normal `IOException`
+- **Status**: Fixed
+
+## Review Findings Addressed
+
+The module hardening work also addressed the following review findings:
+
+- fuzz targets were catching broad `Exception`, which hid genuine findings from Jazzer
+- `fuzzDataFileStream` had no dedicated regression corpus directory
+- the checked-in corpus mostly contained crash reproducers and little successful-path coverage
+- schema fuzzing targeted deprecated `Schema.parse(...)` APIs rather than `SchemaParser`
+- binary fuzzing only covered the buffered decoder path, not `directBinaryDecoder(...)`
+- the fuzz module owned a hard-coded JUnit Platform launcher version instead of inheriting shared versioning from the Java parent
+- the original report and run guidance had drifted from the actual module behavior
+
 ## Current Module Improvements
 
 The fuzz module has been strengthened beyond the initial implementation:
@@ -42,7 +61,10 @@ The fuzz module has been strengthened beyond the initial implementation:
 - binary decoding uses writer/reader schema pairs to exercise aliases, defaults, recursion, fixed, and logical types
 - regression corpora now include valid seeds in addition to historical crash reproducers
 - container-file corpora now cover both `fuzzDataFileReader` and `fuzzDataFileStream`
-- module dependency alignment now follows `${junit5.version}` from the parent POM
+- module dependency alignment now follows shared `${junit-platform.version}` from the Java parent POM
+- successful binary and JSON decodes now require full input consumption
+- the direct binary target now uses a short-read stream to exercise hostile streaming behavior
+- container-file fuzzing now also covers reader-schema resolution paths
 
 ## BinaryDecoder Fix Notes
 

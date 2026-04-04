@@ -24,7 +24,9 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.JsonDecoder;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Fuzz tests for Avro JSON decoding.
@@ -39,10 +41,14 @@ class JsonDecodingFuzzer {
   @FuzzTest
   void fuzzJsonDecoding(FuzzedDataProvider data) {
     String jsonData = FuzzSupport.buildJsonInput(data);
+    ByteArrayInputStream input = new ByteArrayInputStream(jsonData.getBytes(StandardCharsets.UTF_8));
     try {
-      JsonDecoder decoder = DecoderFactory.get().jsonDecoder(FuzzSupport.JSON_SCHEMA, jsonData);
+      JsonDecoder decoder = DecoderFactory.get().jsonDecoder(FuzzSupport.JSON_SCHEMA, input);
       GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(FuzzSupport.JSON_SCHEMA);
       reader.read(null, decoder);
+      if (input.available() > 0) {
+        throw new AssertionError("JSON decoder left trailing bytes unread");
+      }
     } catch (IOException e) {
       // Expected for malformed JSON input
     } catch (RuntimeException e) {

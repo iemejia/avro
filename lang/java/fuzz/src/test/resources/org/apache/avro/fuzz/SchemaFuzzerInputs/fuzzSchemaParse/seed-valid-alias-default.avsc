@@ -1,0 +1,1 @@
+{"type":"record","name":"AliasSeed","fields":[{"name":"legacyName","type":"string"},{"name":"name","aliases":["legacyName"],"type":"string","default":"seed"}]}
