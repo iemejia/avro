@@ -106,3 +106,12 @@ mvn -Dmaven.build.cache.enabled=false test -pl fuzz -am
 ```
 
 The module builds, replays the regression corpus, and runs all fuzz targets successfully.
+
+## TODO
+
+- add IPC-focused fuzz targets covering protocol parsing, handshake decoding, request/response framing, and responder/requestor flows in `lang/java/ipc`
+- evaluate embedded harnesses for `lang/java/ipc-jetty` and `lang/java/ipc-netty` so transport-specific request handling can be fuzzed without external infrastructure
+- extend coverage from datum/container primitives to higher-level API workflows, especially end-to-end RPC exchanges, protocol resolution, and schema-evolution scenarios across writer/reader versions
+- add more stateful and semantic fuzzing plans, including multi-message sessions, append/read cycles, repeated schema reuse, and valid/invalid mixed sequences rather than only single-input entry points
+- explore differential and interoperability fuzzing against other Avro implementations where practical, using shared schemas, single-object payloads, container files, and RPC-compatible fixtures
+- keep expanding the checked-in corpus with valid protocol/message seeds and future minimized reproducers for any real IPC or end-to-end findings
