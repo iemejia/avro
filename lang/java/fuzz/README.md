@@ -11,14 +11,23 @@ This module hosts Jazzer-based fuzz tests for the Java Avro implementation.
 | `BinaryDecodingFuzzer` | `fuzzDirectBinaryDecoding` | Exercises direct binary decoding on `InputStream`-backed inputs |
 | `JsonDecodingFuzzer` | `fuzzJsonDecoding` | Exercises JSON decoding with unions, maps, arrays, and logical types |
 | `DataFileReaderFuzzer` | `fuzzDataFileReader` | Exercises seekable object container file parsing |
+| `DataFileReaderFuzzer` | `fuzzDataFileReaderWithResolution` | Exercises seekable container parsing with explicit reader-schema resolution |
 | `DataFileReaderFuzzer` | `fuzzDataFileStream` | Exercises streaming object container file parsing |
+| `DataFileReaderFuzzer` | `fuzzDataFileStreamWithResolution` | Exercises streaming container parsing with explicit reader-schema resolution |
+| `RoundTripFuzzer` | `fuzzBinaryRoundTrip` | Roundtrips structured valid generic records through binary encoding |
+| `RoundTripFuzzer` | `fuzzJsonRoundTrip` | Roundtrips structured valid generic records through JSON encoding |
+| `RoundTripFuzzer` | `fuzzDataFileRoundTrip` | Roundtrips structured valid generic records through object container files |
+| `ProjectionFuzzer` | `fuzzSpecificProjection` | Projects valid binary payloads through `SpecificDatumReader` |
+| `ProjectionFuzzer` | `fuzzReflectProjection` | Projects valid binary payloads through `ReflectDatumReader` |
+| `SingleObjectFuzzer` | `fuzzSingleObjectRoundTrip` | Roundtrips Avro single-object encoding with schema fingerprints |
+| `SingleObjectFuzzer` | `fuzzSingleObjectDecoding` | Fuzzes malformed and valid single-object decoding |
 
 ## Design Notes
 
 - Targets only suppress exceptions that are expected from malformed Avro input.
 - Unexpected runtime failures are allowed to escape so Jazzer reports them.
 - The checked-in corpus includes both historical crash reproducers and valid seeds.
-- Valid seeds help regression mode reach successful decode paths instead of replaying only prior failures.
+- Valid seeds help regression mode reach successful encode/decode and projection paths instead of replaying only prior failures.
 
 ## Running
 
@@ -26,7 +35,7 @@ Run from `lang/java/`:
 
 ```bash
 # Replay the checked-in regression corpus only.
-mvn test -pl fuzz
+mvn test -pl fuzz -am
 
 # Run continuous fuzzing for 60 seconds per target.
 mvn test -pl fuzz -Pfuzz
@@ -35,7 +44,7 @@ mvn test -pl fuzz -Pfuzz
 mvn test -pl fuzz -Pfuzz -Dtest=BinaryDecodingFuzzer#fuzzDirectBinaryDecoding
 
 # Equivalent environment-variable toggle.
-JAZZER_FUZZ=1 mvn test -pl fuzz
+JAZZER_FUZZ=1 mvn test -pl fuzz -am
 ```
 
 ## Corpus Layout

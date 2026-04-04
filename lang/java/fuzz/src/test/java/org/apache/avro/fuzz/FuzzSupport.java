@@ -24,11 +24,21 @@ import org.apache.avro.Schema;
 import org.apache.avro.SchemaParseException;
 import org.apache.avro.SystemLimitException;
 import org.apache.avro.UnresolvedUnionException;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericEnumSymbol;
+import org.apache.avro.generic.GenericFixed;
+import org.apache.avro.generic.GenericRecord;
 
 import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 final class FuzzSupport {
   static final Schema BINARY_WRITER_SCHEMA = new Schema.Parser()
@@ -61,6 +71,20 @@ final class FuzzSupport {
       + "{\"name\":\"extra\",\"type\":[\"null\",\"string\",\"long\"],\"default\":null},"
       + "{\"name\":\"inner\",\"type\":{\"type\":\"record\",\"name\":\"Inner\",\"fields\":["
       + "{\"name\":\"x\",\"type\":\"int\"}," + "{\"name\":\"y\",\"type\":\"int\"}]}}]}");
+
+  static final Schema ROUND_TRIP_SCHEMA = new Schema.Parser()
+      .parse("{\"type\":\"record\",\"name\":\"RoundTripRoot\",\"fields\":[" + "{\"name\":\"id\",\"type\":\"long\"},"
+          + "{\"name\":\"name\",\"type\":\"string\"},"
+          + "{\"name\":\"createdDate\",\"type\":{\"type\":\"int\",\"logicalType\":\"date\"}},"
+          + "{\"name\":\"active\",\"type\":\"boolean\"}," + "{\"name\":\"score\",\"type\":\"double\"},"
+          + "{\"name\":\"payload\",\"type\":\"bytes\"},"
+          + "{\"name\":\"tags\",\"type\":{\"type\":\"array\",\"items\":\"string\"}},"
+          + "{\"name\":\"counts\",\"type\":{\"type\":\"map\",\"values\":\"long\"}},"
+          + "{\"name\":\"choice\",\"type\":[\"null\",\"string\",\"long\"],\"default\":null},"
+          + "{\"name\":\"hash\",\"type\":{\"type\":\"fixed\",\"name\":\"RoundTripHash\",\"size\":4}},"
+          + "{\"name\":\"inner\",\"type\":{\"type\":\"record\",\"name\":\"RoundTripInner\",\"fields\":["
+          + "{\"name\":\"x\",\"type\":\"int\"}," + "{\"name\":\"y\",\"type\":\"int\"}]}},"
+          + "{\"name\":\"status\",\"type\":{\"type\":\"enum\",\"name\":\"RoundTripStatus\",\"symbols\":[\"NEW\",\"READY\",\"DONE\"]}}]}");
 
   private FuzzSupport() {
   }
@@ -137,8 +161,145 @@ final class FuzzSupport {
         + "\"},\"extra\":null,\"inner\":{\"x\":" + x + ",\"y\":" + y + "}}";
   }
 
+  static GenericRecord buildRoundTripRecord(FuzzedDataProvider data) {
+    GenericRecord record = new GenericData.Record(ROUND_TRIP_SCHEMA);
+    record.put("id", sanitizeLong(data.consumeLong()));
+    record.put("name", safeString(data.consumeString(24), "roundtrip"));
+    record.put("createdDate", data.consumeInt(0, 36500));
+    record.put("active", data.consumeBoolean());
+    record.put("score", boundedScore(data.consumeInt()));
+    record.put("payload", ByteBuffer.wrap(data.consumeBytes(data.consumeInt(0, 16))));
+    record.put("tags", buildStringList(data));
+    record.put("counts", buildCountMap(data));
+    record.put("choice", buildUnionValue(data));
+    record.put("hash", new GenericData.Fixed(ROUND_TRIP_SCHEMA.getField("hash").schema(), buildFixedBytes(data)));
+    record.put("inner", buildInnerRecord(data));
+    record.put("status", new GenericData.EnumSymbol(ROUND_TRIP_SCHEMA.getField("status").schema(),
+        ROUND_TRIP_SCHEMA.getField("status").schema().getEnumSymbols().get(data.consumeInt(0, 2))));
+    return record;
+  }
+
+  static String safeString(String value, String fallback) {
+    return value.isEmpty() ? fallback : value;
+  }
+
+  static boolean semanticEquals(Object left, Object right) {
+    return Objects.equals(normalizeDatum(left), normalizeDatum(right));
+  }
+
+  static boolean roundTripRecordsEqual(GenericRecord left, GenericRecord right) {
+    for (Schema.Field field : ROUND_TRIP_SCHEMA.getFields()) {
+      if (!semanticEquals(left.get(field.name()), right.get(field.name()))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private static double boundedScore(int value) {
     return (value % 1000) / 10.0d;
+  }
+
+  private static GenericRecord buildInnerRecord(FuzzedDataProvider data) {
+    GenericRecord inner = new GenericData.Record(ROUND_TRIP_SCHEMA.getField("inner").schema());
+    inner.put("x", data.consumeInt());
+    inner.put("y", data.consumeInt());
+    return inner;
+  }
+
+  private static List<String> buildStringList(FuzzedDataProvider data) {
+    List<String> list = new ArrayList<>();
+    int size = data.consumeInt(0, 4);
+    for (int i = 0; i < size; i++) {
+      list.add(safeString(data.consumeString(16), "tag" + i));
+    }
+    return list;
+  }
+
+  private static Map<String, Long> buildCountMap(FuzzedDataProvider data) {
+    Map<String, Long> map = new LinkedHashMap<>();
+    int size = data.consumeInt(0, 4);
+    for (int i = 0; i < size; i++) {
+      map.put(safeString(toIdentifier(data.consumeString(12), "k" + i), "k" + i), sanitizeLong(data.consumeLong()));
+    }
+    return map;
+  }
+
+  private static Object buildUnionValue(FuzzedDataProvider data) {
+    switch (data.consumeInt(0, 2)) {
+    case 0:
+      return null;
+    case 1:
+      return safeString(data.consumeString(16), "choice");
+    default:
+      return sanitizeLong(data.consumeLong());
+    }
+  }
+
+  private static byte[] buildFixedBytes(FuzzedDataProvider data) {
+    byte[] bytes = data.consumeBytes(4);
+    if (bytes.length == 4) {
+      return bytes;
+    }
+    byte[] fixed = new byte[4];
+    System.arraycopy(bytes, 0, fixed, 0, Math.min(bytes.length, fixed.length));
+    return fixed;
+  }
+
+  private static Object normalizeDatum(Object datum) {
+    if (datum == null) {
+      return null;
+    }
+    if (datum instanceof CharSequence) {
+      return datum.toString();
+    }
+    if (datum instanceof GenericEnumSymbol<?> || datum instanceof Enum<?>) {
+      return datum.toString();
+    }
+    if (datum instanceof ByteBuffer) {
+      return normalizeBytes((ByteBuffer) datum);
+    }
+    if (datum instanceof GenericFixed) {
+      return normalizeBytes(ByteBuffer.wrap(((GenericFixed) datum).bytes()));
+    }
+    if (datum instanceof GenericRecord) {
+      GenericRecord record = (GenericRecord) datum;
+      Map<String, Object> normalized = new LinkedHashMap<>();
+      for (Schema.Field field : record.getSchema().getFields()) {
+        normalized.put(field.name(), normalizeDatum(record.get(field.name())));
+      }
+      return normalized;
+    }
+    if (datum instanceof List<?>) {
+      List<Object> normalized = new ArrayList<>();
+      for (Object value : (List<?>) datum) {
+        normalized.add(normalizeDatum(value));
+      }
+      return normalized;
+    }
+    if (datum instanceof Map<?, ?>) {
+      Map<String, Object> normalized = new LinkedHashMap<>();
+      for (Map.Entry<?, ?> entry : ((Map<?, ?>) datum).entrySet()) {
+        normalized.put(String.valueOf(normalizeDatum(entry.getKey())), normalizeDatum(entry.getValue()));
+      }
+      return normalized;
+    }
+    if (datum instanceof Double || datum instanceof Float) {
+      return ((Number) datum).doubleValue();
+    }
+    if (datum instanceof Number) {
+      return ((Number) datum).longValue();
+    }
+    return datum;
+  }
+
+  private static List<Integer> normalizeBytes(ByteBuffer buffer) {
+    ByteBuffer copy = buffer.duplicate();
+    List<Integer> bytes = new ArrayList<>(copy.remaining());
+    while (copy.hasRemaining()) {
+      bytes.add(copy.get() & 0xff);
+    }
+    return bytes;
   }
 
   private static boolean isExpectedAvroRuntimeFailure(RuntimeException exception) {

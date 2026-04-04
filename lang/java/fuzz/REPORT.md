@@ -4,7 +4,7 @@
 
 `lang/java/fuzz/` is a Jazzer-based fuzzing module for the Java Avro implementation.
 
-Current coverage includes 4 fuzz classes and 6 fuzz targets:
+Current coverage includes parser, decoding, roundtrip, projection, and single-object targets:
 
 - schema parsing via `SchemaParser`
 - buffered binary decoding
@@ -12,6 +12,9 @@ Current coverage includes 4 fuzz classes and 6 fuzz targets:
 - JSON decoding
 - seekable container-file decoding
 - streaming container-file decoding
+- generic record roundtrips across binary, JSON, and object container formats
+- typed projection through `SpecificDatumReader` and `ReflectDatumReader`
+- Avro single-object encoding and decoding
 
 The module is wired into `lang/java/pom.xml` and can be run in regression or continuous-fuzzing mode through Maven.
 
@@ -65,6 +68,9 @@ The fuzz module has been strengthened beyond the initial implementation:
 - successful binary and JSON decodes now require full input consumption
 - the direct binary target now uses a short-read stream to exercise hostile streaming behavior
 - container-file fuzzing now also covers reader-schema resolution paths
+- roundtrip fuzzing now checks semantic equality across binary, JSON, and container formats
+- Java model projection now covers both specific and reflect readers
+- single-object message framing is now fuzzed directly
 
 ## BinaryDecoder Fix Notes
 
@@ -86,6 +92,8 @@ Checked-in regression inputs now include:
 - valid JSON record seeds
 - valid binary datum seeds
 - valid object container file seeds for both reader and stream targets
+- valid roundtrip binary, JSON, and container seeds
+- valid specific, reflect, and single-object seeds
 
 This makes `mvn test -pl fuzz` useful as both a regression suite and a shallow successful-path smoke test.
 
@@ -94,7 +102,7 @@ This makes `mvn test -pl fuzz` useful as both a regression suite and a shallow s
 Verified locally with:
 
 ```bash
-mvn test -pl fuzz
+mvn -Dmaven.build.cache.enabled=false test -pl fuzz -am
 ```
 
 The module builds, replays the regression corpus, and runs all fuzz targets successfully.
