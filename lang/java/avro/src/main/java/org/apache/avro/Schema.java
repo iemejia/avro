@@ -1512,6 +1512,9 @@ public abstract class Schema extends JsonProperties implements Serializable {
      * names known to this parser.
      */
     public Schema parse(String s) {
+      if (s == null) {
+        throw new SchemaParseException("Cannot parse null schema string");
+      }
       try {
         return parse(FACTORY.createParser(s), false, true);
       } catch (IOException e) {
@@ -1520,6 +1523,9 @@ public abstract class Schema extends JsonProperties implements Serializable {
     }
 
     public Schema parseInternal(String s) {
+      if (s == null) {
+        throw new SchemaParseException("Cannot parse null schema string");
+      }
       try {
         return parse(FACTORY.createParser(s), false, false);
       } catch (IOException e) {

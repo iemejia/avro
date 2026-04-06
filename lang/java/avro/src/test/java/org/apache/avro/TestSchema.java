@@ -676,4 +676,10 @@ public class TestSchema {
       assertTrue(ate.getMessage().contains(badValue));
     }
   }
+
+  @Test
+  void parseNullStringThrowsSchemaParseException() {
+    Schema.Parser parser = new Schema.Parser();
+    assertThrows(SchemaParseException.class, () -> parser.parse((String) null));
+  }
 }
