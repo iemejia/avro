@@ -126,4 +126,21 @@ public class ParseContextTest {
     context.put(fooRecord);
     assertThrows(AvroRuntimeException.class, () -> context.put(fooEnum));
   }
+
+  @Test
+  public void resolveUnresolvedSchemaThrowsAvroTypeException() {
+    // Create an unresolved schema placeholder (as would be returned by find()
+    // when a type is not yet defined). If this placeholder is passed directly
+    // to resolve() — e.g. as the main schema of a parse result — it must throw
+    // AvroTypeException rather than NPE. (This was the bug found by fuzzing.)
+    Schema unresolved = SchemaResolver.unresolvedSchema("com.example.Missing");
+
+    ParseContext context = new ParseContext();
+    context.put(fooRecord);
+    context.commit();
+
+    AvroTypeException ex = assertThrows(AvroTypeException.class, () -> context.resolve(unresolved));
+    assertTrue(ex.getMessage().contains("com.example.Missing"),
+        "Exception should mention the missing type name, got: " + ex.getMessage());
+  }
 }

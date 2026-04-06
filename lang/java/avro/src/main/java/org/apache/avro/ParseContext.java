@@ -326,6 +326,13 @@ public class ParseContext {
     // — All named types are either in oldSchemas or unknown.
     // — All unnamed types can be visited&resolved without validation.
 
+    // An unresolved reference placeholder is a synthetic RECORD whose full name
+    // (e.g. "org.apache.avro.compiler.UnresolvedSchema_N") will never appear in
+    // oldSchemas. Detect it early and report the real missing type name.
+    if (SchemaResolver.isUnresolvedSchema(schema)) {
+      throw new AvroTypeException("Undefined schema: " + SchemaResolver.getUnresolvedSchemaName(schema));
+    }
+
     if (NAMED_SCHEMA_TYPES.contains(schema.getType()) && schema.getFullName() != null) {
       return requireNonNull(oldSchemas.get(schema.getFullName()), () -> "Unknown schema: " + schema.getFullName());
     } else {
