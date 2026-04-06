@@ -92,6 +92,7 @@
     <module>perf</module>
     <module>interop-data-test</module>
     <module>java17-test</module>
+    <module>fuzz</module>
   </modules>
 
   <build>

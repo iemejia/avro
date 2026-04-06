@@ -1,0 +1,133 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: "Fuzz Java"
+on:
+  workflow_dispatch:
+    inputs:
+      fuzz-duration:
+        description: "Per-target fuzzing duration in seconds"
+        required: false
+        default: "60"
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fuzz-java.yml
+      - lang/java/fuzz/**
+      - lang/java/avro/**
+      - pom.xml
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/fuzz-java.yml
+      - lang/java/fuzz/**
+      - lang/java/avro/**
+      - pom.xml
+
+defaults:
+  run:
+    working-directory: lang/java
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz-regression:
+    name: "Fuzz Regression"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout sourcecode"
+        uses: actions/checkout@v6
+
+      - name: "Cache Local Maven Repository"
+        uses: actions/cache@v5
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: "Setup Temurin JDK 11, 17 & 21"
+        uses: actions/setup-java@v5
+        with:
+          distribution: "temurin"
+          java-version: |
+            11
+            17
+            21
+
+      - name: "Setup Maven 3.9.11"
+        uses: stCarolas/setup-maven@d6af6abeda15e98926a57b5aa970a96bb37f97d1 # v5
+        with:
+          maven-version: 3.9.11
+
+      - name: "Install Avro"
+        working-directory: ./
+        run: mvn -B install -PskipQuality -DskipTests
+
+      - name: "Fuzz Regression Tests"
+        run: mvn -B test -pl fuzz
+
+  fuzz:
+    name: "Fuzz"
+    runs-on: ubuntu-latest
+    # Only run actual fuzzing on pushes to main or manual dispatch, not on PRs
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: fuzz-regression
+    steps:
+      - name: "Checkout sourcecode"
+        uses: actions/checkout@v6
+
+      - name: "Cache Local Maven Repository"
+        uses: actions/cache@v5
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: "Setup Temurin JDK 11, 17 & 21"
+        uses: actions/setup-java@v5
+        with:
+          distribution: "temurin"
+          java-version: |
+            11
+            17
+            21
+
+      - name: "Setup Maven 3.9.11"
+        uses: stCarolas/setup-maven@d6af6abeda15e98926a57b5aa970a96bb37f97d1 # v5
+        with:
+          maven-version: 3.9.11
+
+      - name: "Install Avro"
+        working-directory: ./
+        run: mvn -B install -PskipQuality -DskipTests
+
+      - name: "Run Fuzz Tests"
+        run: mvn -B test -pl fuzz -Pfuzz -Dfuzz.duration=${{ github.event.inputs.fuzz-duration || '60' }}
+        continue-on-error: true
+
+      - name: "Upload crash inputs"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-findings
+          path: |
+            lang/java/fuzz/src/test/resources/**/*crash-*
+            lang/java/fuzz/.cifuzz-corpus/
+          if-no-files-found: ignore
+          retention-days: 30

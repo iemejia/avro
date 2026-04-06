@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+   Licensed to the Apache Software Foundation (ASF) under one or more
+   contributor license agreements.  See the NOTICE file distributed with
+   this work for additional information regarding copyright ownership.
+   The ASF licenses this file to You under the Apache License, Version 2.0
+   (the "License"); you may not use this file except in compliance with
+   the License.  You may obtain a copy of the License at
+
+       https://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+-->
+<project
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+  xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <artifactId>avro-parent</artifactId>
+    <groupId>org.apache.avro</groupId>
+    <version>1.13.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>avro-fuzz</artifactId>
+  <packaging>jar</packaging>
+
+  <name>Apache Avro Fuzz Tests</name>
+  <description>Jazzer-based fuzz tests for Apache Avro Java</description>
+
+  <properties>
+    <main.basedir>${project.parent.parent.basedir}</main.basedir>
+    <jazzer.version>0.30.0</jazzer.version>
+  </properties>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <!-- Override parent include pattern: fuzz classes are not named Test* -->
+          <includes>
+            <include>**/*Fuzzer.java</include>
+            <include>**/*Generator.java</include>
+          </includes>
+          <excludes>
+            <exclude>**/*$*</exclude>
+          </excludes>
+          <!-- Exclude JUnit Vintage from the classpath: fuzz module has no JUnit 4 tests -->
+          <classpathDependencyExcludes>
+            <classpathDependencyExclude>org.junit.vintage:junit-vintage-engine</classpathDependencyExclude>
+          </classpathDependencyExcludes>
+          <!--
+            Default: regression mode (no JAZZER_FUZZ).
+            Fuzz tests replay seed/crash inputs from their inputs directories.
+            Use the "fuzz" profile (-Pfuzz) for actual fuzzing.
+          -->
+          <argLine>-Xmx512m</argLine>
+        </configuration>
+      </plugin>
+      <!-- Skip jar/install/deploy: this module only contains tests -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>default-jar</id>
+            <phase>none</phase>
+          </execution>
+          <execution>
+            <id>default</id>
+            <phase>none</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-install-plugin</artifactId>
+        <configuration>
+          <skip>true</skip>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <dependencyManagement>
+    <dependencies>
+      <!--
+        Jazzer 0.30.0 declares JUnit 5.9.0 as a transitive dependency, but the parent
+        POM inherits JUnit 5.14.3 (jupiter-engine, vintage-engine). When Maven resolves
+        the "nearest" version, the engine ends up at 5.14.3 while the API stays at 5.9.0.
+        The 5.14.3 engine references classes added after 5.9.0, causing
+        NoClassDefFoundError during test discovery.
+
+        Importing the JUnit BOM at the project-wide version forces every JUnit artifact
+        (API, engine, platform) to the same release, eliminating the mismatch.
+      -->
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit5.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.avro</groupId>
+      <artifactId>avro</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.code-intelligence</groupId>
+      <artifactId>jazzer-junit</artifactId>
+      <version>${jazzer.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <profiles>
+    <!--
+      Fuzzing profile: enables Jazzer fuzzing mode with a per-target time limit.
+      Usage: mvn test -pl :avro-fuzz -Pfuzz [-Dfuzz.duration=60]
+    -->
+    <profile>
+      <id>fuzz</id>
+      <properties>
+        <!-- Per-target fuzzing duration in seconds (default 60s) -->
+        <fuzz.duration>60</fuzz.duration>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <environmentVariables>
+                <JAZZER_FUZZ>1</JAZZER_FUZZ>
+              </environmentVariables>
+              <argLine>-Xmx512m -Djazzer.internal.arg=-max_total_time=${fuzz.duration}</argLine>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
+</project>
