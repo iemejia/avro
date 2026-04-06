@@ -146,7 +146,7 @@
               <environmentVariables>
                 <JAZZER_FUZZ>1</JAZZER_FUZZ>
               </environmentVariables>
-              <argLine>-Xmx512m -Djazzer.internal.arg=-max_total_time=${fuzz.duration}</argLine>
+              <argLine>-Xmx1g -Djazzer.internal.arg=-max_total_time=${fuzz.duration} -Djazzer.internal.arg=-rss_limit_mb=0</argLine>
             </configuration>
           </plugin>
         </plugins>

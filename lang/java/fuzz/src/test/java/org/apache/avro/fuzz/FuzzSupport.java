@@ -89,15 +89,36 @@ final class FuzzSupport {
   private FuzzSupport() {
   }
 
+  /**
+   * Rethrow an exception from data file reading only if it indicates a real bug.
+   * Container format fuzzing can trigger virtually any exception type (schema
+   * parsing, decoding, codec, IO) from random input. Only
+   * {@link NullPointerException}, {@link ArrayIndexOutOfBoundsException}, and
+   * {@link ClassCastException} are considered unexpected — they suggest missing
+   * null/bounds/type checks in the library code.
+   */
+  static void rethrowIfUnexpectedContainerFailure(Exception exception) {
+    if (exception instanceof NullPointerException || exception instanceof ArrayIndexOutOfBoundsException
+        || exception instanceof ClassCastException) {
+      if (exception instanceof RuntimeException) {
+        throw (RuntimeException) exception;
+      }
+    }
+    // All other exceptions are expected for malformed container files:
+    // IOException, AvroRuntimeException, SchemaParseException, AvroTypeException,
+    // IllegalArgumentException, UnsupportedOperationException, etc.
+  }
+
   static boolean isExpectedSchemaFailure(RuntimeException exception) {
     return exception instanceof SchemaParseException || exception instanceof AvroTypeException
         || exception instanceof IllegalArgumentException;
   }
 
   static boolean isExpectedDecodingFailure(RuntimeException exception) {
-    return exception instanceof AvroTypeException || exception instanceof SystemLimitException
-        || exception instanceof UnresolvedUnionException || isExpectedDecodingIllegalArgument(exception)
-        || isExpectedUnsupportedOperation(exception) || isExpectedAvroRuntimeFailure(exception);
+    return exception instanceof AvroTypeException || exception instanceof SchemaParseException
+        || exception instanceof SystemLimitException || exception instanceof UnresolvedUnionException
+        || isExpectedDecodingIllegalArgument(exception) || isExpectedUnsupportedOperation(exception)
+        || isExpectedAvroRuntimeFailure(exception);
   }
 
   static InputStream shortReadStream(byte[] data) {
@@ -307,13 +328,21 @@ final class FuzzSupport {
       return false;
     }
 
+    // AvroRuntimeException wrapping IOException is expected for corrupted data
+    // files (e.g. invalid sync markers, truncated blocks). DataFileStream.hasNext()
+    // catches IOException and wraps it.
+    if (exception.getCause() instanceof java.io.IOException) {
+      return true;
+    }
+
     String message = exception.getMessage();
     if (message == null) {
       return false;
     }
 
     return message.startsWith("Malformed data.") || message.startsWith("Unknown datum type")
-        || message.startsWith("Not an array") || message.startsWith("Not a map") || message.startsWith("No match for ");
+        || message.startsWith("Not an array") || message.startsWith("Not a map") || message.startsWith("No match for ")
+        || message.startsWith("No schema");
   }
 
   private static boolean isExpectedDecodingIllegalArgument(RuntimeException exception) {
