@@ -44,6 +44,7 @@ import java.io.InputStream;
 public class RawMessageDecoder<D> extends MessageDecoder.BaseDecoder<D> {
 
   private static final ThreadLocal<BinaryDecoder> DECODER = new ThreadLocal<>();
+  private static final ThreadLocal<BinaryDecoder> BYTE_ARRAY_DECODER = new ThreadLocal<>();
 
   private final DatumReader<D> reader;
 
@@ -85,6 +86,22 @@ public class RawMessageDecoder<D> extends MessageDecoder.BaseDecoder<D> {
   public D decode(InputStream stream, D reuse) {
     BinaryDecoder decoder = DecoderFactory.get().directBinaryDecoder(stream, DECODER.get());
     DECODER.set(decoder);
+    try {
+      return reader.read(reuse, decoder);
+    } catch (IOException e) {
+      throw new AvroRuntimeException("Decoding datum failed", e);
+    }
+  }
+
+  @Override
+  public D decode(byte[] encoded, D reuse) {
+    return decode(encoded, 0, encoded.length, reuse);
+  }
+
+  D decode(byte[] encoded, int offset, int length, D reuse) {
+    BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(encoded, BYTE_ARRAY_DECODER.get());
+    decoder = DecoderFactory.get().binaryDecoder(encoded, offset, length, decoder);
+    BYTE_ARRAY_DECODER.set(decoder);
     try {
       return reader.read(reuse, decoder);
     } catch (IOException e) {

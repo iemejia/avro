@@ -193,6 +193,22 @@ public class TestBinaryMessageEncoding {
   }
 
   @Test
+  void byteArrayDecodeWithReuse() throws Exception {
+    MessageEncoder<Record> encoder = new BinaryMessageEncoder<>(GenericData.get(), SCHEMA_V1);
+    BinaryMessageDecoder<Record> decoder = new BinaryMessageDecoder<>(GenericData.get(), SCHEMA_V1);
+
+    ByteBuffer buffer = encoder.encode(V1_RECORDS.get(2));
+    byte[] encoded = new byte[buffer.remaining()];
+    buffer.get(encoded);
+
+    Record reuse = new GenericData.Record(SCHEMA_V1);
+    Record decoded = decoder.decode(encoded, reuse);
+
+    assertSame(reuse, decoded);
+    assertEquals(V1_RECORDS.get(2), decoded);
+  }
+
+  @Test
   void byteBufferMissingPayload() throws Exception {
     assertThrows(AvroRuntimeException.class, () -> {
       MessageEncoder<Record> encoder = new BinaryMessageEncoder<>(GenericData.get(), SCHEMA_V2);

@@ -25,8 +25,6 @@ import org.apache.avro.util.internal.ThreadLocalWithInitial;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -49,11 +47,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class BinaryMessageDecoder<D> extends MessageDecoder.BaseDecoder<D> {
 
   private static final ThreadLocal<byte[]> HEADER_BUFFER = ThreadLocalWithInitial.of(() -> new byte[10]);
-
-  private static final ThreadLocal<ByteBuffer> FP_BUFFER = ThreadLocalWithInitial.of(() -> {
-    byte[] header = HEADER_BUFFER.get();
-    return ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN);
-  });
 
   private final GenericData model;
   private final Schema readSchema;
@@ -157,9 +150,23 @@ public class BinaryMessageDecoder<D> extends MessageDecoder.BaseDecoder<D> {
       throw new BadHeaderException(String.format("Unrecognized header bytes: 0x%02X 0x%02X", header[0], header[1]));
     }
 
-    RawMessageDecoder<D> decoder = getDecoder(FP_BUFFER.get().getLong(2));
+    RawMessageDecoder<D> decoder = getDecoder(readFingerprint(header, 2));
 
     return decoder.decode(stream, reuse);
+  }
+
+  @Override
+  public D decode(byte[] encoded, D reuse) throws IOException {
+    if (encoded.length < 10) {
+      throw new BadHeaderException("Not enough header bytes");
+    }
+
+    if (BinaryMessageEncoder.V1_HEADER[0] != encoded[0] || BinaryMessageEncoder.V1_HEADER[1] != encoded[1]) {
+      throw new BadHeaderException(String.format("Unrecognized header bytes: 0x%02X 0x%02X", encoded[0], encoded[1]));
+    }
+
+    RawMessageDecoder<D> decoder = getDecoder(readFingerprint(encoded, 2));
+    return decoder.decode(encoded, 10, encoded.length - 10, reuse);
   }
 
   /**
@@ -177,5 +184,12 @@ public class BinaryMessageDecoder<D> extends MessageDecoder.BaseDecoder<D> {
       pos += bytesRead;
     }
     return (pos == bytes.length);
+  }
+
+  private static long readFingerprint(byte[] bytes, int offset) {
+    return ((long) bytes[offset] & 0xff) | (((long) bytes[offset + 1] & 0xff) << 8)
+        | (((long) bytes[offset + 2] & 0xff) << 16) | (((long) bytes[offset + 3] & 0xff) << 24)
+        | (((long) bytes[offset + 4] & 0xff) << 32) | (((long) bytes[offset + 5] & 0xff) << 40)
+        | (((long) bytes[offset + 6] & 0xff) << 48) | (((long) bytes[offset + 7] & 0xff) << 56);
   }
 }
