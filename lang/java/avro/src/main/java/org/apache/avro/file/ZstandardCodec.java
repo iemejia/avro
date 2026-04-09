@@ -81,7 +81,7 @@ public class ZstandardCodec extends Codec {
     InputStream bytesIn = new ByteArrayInputStream(compressedData.array(), computeOffset(compressedData),
         compressedData.remaining());
     try (InputStream ios = ZstandardLoader.input(bytesIn, useBufferPool)) {
-      ios.transferTo(baos);
+      boundedCopy(ios, baos);
     }
     return baos.asByteBuffer();
   }

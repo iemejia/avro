@@ -17,14 +17,16 @@
  */
 package org.apache.trevni;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.Inflater;
-import java.util.zip.InflaterOutputStream;
+import java.util.zip.InflaterInputStream;
 
 /** Implements DEFLATE (RFC1951) compression and decompression. */
 class DeflateCodec extends Codec {
@@ -44,8 +46,9 @@ class DeflateCodec extends Codec {
   @Override
   ByteBuffer decompress(ByteBuffer data) throws IOException {
     ByteArrayOutputStream baos = getOutputBuffer(data.remaining());
-    try (OutputStream outputStream = new InflaterOutputStream(baos, getInflater())) {
-      outputStream.write(data.array(), computeOffset(data), data.remaining());
+    InputStream bytesIn = new ByteArrayInputStream(data.array(), computeOffset(data), data.remaining());
+    try (InputStream ios = new InflaterInputStream(bytesIn, getInflater())) {
+      boundedCopy(ios, baos);
     }
     return ByteBuffer.wrap(baos.toByteArray());
   }
