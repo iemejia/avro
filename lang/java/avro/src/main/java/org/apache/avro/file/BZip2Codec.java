@@ -29,7 +29,6 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream
 public class BZip2Codec extends Codec {
 
   public static final int DEFAULT_BUFFER_SIZE = 64 * 1024;
-  private final byte[] buffer = new byte[DEFAULT_BUFFER_SIZE];
 
   static class Option extends CodecFactory {
     @Override
@@ -63,12 +62,7 @@ public class BZip2Codec extends Codec {
     NonCopyingByteArrayOutputStream baos = new NonCopyingByteArrayOutputStream(DEFAULT_BUFFER_SIZE);
 
     try (BZip2CompressorInputStream inputStream = new BZip2CompressorInputStream(bais)) {
-
-      int readCount;
-      while ((readCount = inputStream.read(buffer, compressedData.position(), buffer.length)) > 0) {
-        baos.write(buffer, 0, readCount);
-      }
-
+      boundedCopy(inputStream, baos);
       return baos.asByteBuffer();
     }
   }

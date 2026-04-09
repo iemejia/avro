@@ -37,7 +37,9 @@ final class SnappyCodec extends Codec {
   @Override
   ByteBuffer decompress(ByteBuffer in) throws IOException {
     int offset = computeOffset(in);
-    ByteBuffer out = ByteBuffer.allocate(Snappy.uncompressedLength(in.array(), offset, in.remaining()));
+    int uncompressedSize = Snappy.uncompressedLength(in.array(), offset, in.remaining());
+    checkDecompressLimit(uncompressedSize);
+    ByteBuffer out = ByteBuffer.allocate(uncompressedSize);
     int size = Snappy.uncompress(in.array(), offset, in.remaining(), out.array(), 0);
     ((Buffer) out).limit(size);
     return out;
