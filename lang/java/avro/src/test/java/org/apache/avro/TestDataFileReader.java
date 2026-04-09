@@ -33,10 +33,13 @@ import org.apache.avro.file.DataFileReader;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.file.FileReader;
+import org.apache.avro.file.SeekableByteArrayInput;
 import org.apache.avro.file.SeekableFileInput;
 import org.apache.avro.file.SeekableInput;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -236,6 +239,40 @@ public class TestDataFileReader {
     try (SeekableFileInput fileInput = new SeekableFileInput(f)) {
       assertThrows(InvalidAvroMagicException.class,
           () -> DataFileReader.openReader(fileInput, new GenericDatumReader<>()));
+    }
+  }
+
+  @Test
+  void syncFindsNextBlockStartFromMidBlock() throws IOException {
+    Schema schema = new Schema.Parser().parse("{\"type\":\"record\",\"name\":\"SyncRecord\",\"fields\":["
+        + "{\"name\":\"id\",\"type\":\"long\"}," + "{\"name\":\"payload\",\"type\":\"string\"}]}");
+
+    byte[] data;
+    try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        DataFileWriter<GenericRecord> writer = new DataFileWriter<>(new GenericDatumWriter<>(schema))) {
+      writer.setSyncInterval(64);
+      writer.create(schema, out);
+      for (int i = 0; i < 64; i++) {
+        GenericRecord record = new GenericData.Record(schema);
+        record.put("id", (long) i);
+        record.put("payload", "payload-" + i + "-abcdefghijklmnop");
+        writer.append(record);
+      }
+      data = out.toByteArray();
+    }
+
+    try (DataFileReader<GenericRecord> reader = new DataFileReader<>(new SeekableByteArrayInput(data),
+        new GenericDatumReader<>(schema))) {
+      reader.sync(data.length / 3L);
+
+      long syncedPosition = reader.previousSync();
+      assertTrue(syncedPosition >= data.length / 3L);
+      assertTrue(reader.hasNext());
+
+      GenericRecord record = reader.next();
+      assertNotNull(record.get("id"));
+      assertNotNull(record.get("payload"));
+      assertEquals(syncedPosition, reader.previousSync());
     }
   }
 }
