@@ -190,4 +190,16 @@ public class TestDecompressionBomb {
     ByteBuffer decompressed = codec.decompress(compressed);
     assertEquals(ByteBuffer.wrap(input), decompressed);
   }
+
+  @Test
+  void truncatedDeflateInputThrowsIOException() throws IOException {
+    Codec codec = TestAllCodecs.getCodec("deflate");
+    ByteBuffer compressed = codec.compress(ByteBuffer.wrap(TestAllCodecs.generateTestData(5_000)));
+
+    ByteBuffer truncated = compressed.duplicate();
+    truncated.limit(truncated.limit() - 1);
+
+    IOException ex = assertThrows(IOException.class, () -> codec.decompress(truncated));
+    assertTrue(ex.getMessage().contains("Invalid deflate data"));
+  }
 }

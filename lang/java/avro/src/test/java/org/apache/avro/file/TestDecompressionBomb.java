@@ -192,4 +192,23 @@ public class TestDecompressionBomb {
     ByteBuffer decompressed = codec.decompress(compressed);
     assertEquals(ByteBuffer.wrap(input), decompressed);
   }
+
+  @Test
+  void truncatedDeflateInputThrowsIOException() throws IOException {
+    Codec codec = CodecFactory.fromString("deflate").createInstance();
+    ByteBuffer compressed = codec.compress(ByteBuffer.wrap(TestAllCodecs.generateTestData(5_000)));
+
+    ByteBuffer truncated = compressed.duplicate();
+    truncated.limit(truncated.limit() - 1);
+
+    IOException ex = assertThrows(IOException.class, () -> codec.decompress(truncated));
+    assertTrue(ex.getMessage().contains("Invalid deflate data"));
+  }
+
+  @Test
+  void snappyMissingChecksumThrowsIOException() throws IOException {
+    Codec codec = CodecFactory.fromString("snappy").createInstance();
+    IOException ex = assertThrows(IOException.class, () -> codec.decompress(ByteBuffer.wrap(new byte[3])));
+    assertEquals("Invalid snappy data: missing checksum", ex.getMessage());
+  }
 }

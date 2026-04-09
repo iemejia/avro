@@ -23,13 +23,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.Inflater;
-import java.util.zip.InflaterInputStream;
 
 /** Implements DEFLATE (RFC1951) compression and decompression. */
 class DeflateCodec extends Codec {
+  private static final int DEFAULT_BUFFER_SIZE = 8192;
+
   private ByteArrayOutputStream outputBuffer;
   private Deflater deflater;
   private Inflater inflater;
@@ -46,9 +48,34 @@ class DeflateCodec extends Codec {
   @Override
   ByteBuffer decompress(ByteBuffer data) throws IOException {
     ByteArrayOutputStream baos = getOutputBuffer(data.remaining());
-    InputStream bytesIn = new ByteArrayInputStream(data.array(), computeOffset(data), data.remaining());
-    try (InputStream ios = new InflaterInputStream(bytesIn, getInflater())) {
-      boundedCopy(ios, baos);
+    byte[] buffer = new byte[DEFAULT_BUFFER_SIZE];
+    long totalBytes = 0;
+
+    Inflater inflater = getInflater();
+    inflater.setInput(data.array(), computeOffset(data), data.remaining());
+
+    try {
+      while (true) {
+        int len = inflater.inflate(buffer);
+        if (len > 0) {
+          totalBytes += len;
+          checkDecompressLimit(totalBytes);
+          baos.write(buffer, 0, len);
+          continue;
+        }
+        if (inflater.finished()) {
+          break;
+        }
+        if (inflater.needsDictionary()) {
+          throw new IOException("Invalid deflate data: dictionary required");
+        }
+        if (inflater.needsInput()) {
+          throw new IOException("Invalid deflate data: truncated input");
+        }
+        throw new IOException("Invalid deflate data: unable to make progress");
+      }
+    } catch (DataFormatException e) {
+      throw new IOException("Invalid deflate data", e);
     }
     return ByteBuffer.wrap(baos.toByteArray());
   }

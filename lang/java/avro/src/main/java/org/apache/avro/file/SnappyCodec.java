@@ -65,6 +65,9 @@ public class SnappyCodec extends Codec {
 
   @Override
   public ByteBuffer decompress(ByteBuffer in) throws IOException {
+    if (in.remaining() < 4) {
+      throw new IOException("Invalid snappy data: missing checksum");
+    }
     int offset = computeOffset(in);
     int uncompressedSize = Snappy.uncompressedLength(in.array(), offset, in.remaining() - 4);
     checkDecompressLimit(uncompressedSize);

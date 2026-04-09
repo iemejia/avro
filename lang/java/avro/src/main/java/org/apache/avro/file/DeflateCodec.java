@@ -86,14 +86,24 @@ public class DeflateCodec extends Codec {
     inflater.setInput(data.array(), computeOffset(data), data.remaining());
 
     try {
-      while (!inflater.finished()) {
+      while (true) {
         int len = inflater.inflate(buffer);
-        if (len == 0 && inflater.needsInput()) {
+        if (len > 0) {
+          totalBytes += len;
+          checkDecompressLimit(totalBytes);
+          baos.write(buffer, 0, len);
+          continue;
+        }
+        if (inflater.finished()) {
           break;
         }
-        totalBytes += len;
-        checkDecompressLimit(totalBytes);
-        baos.write(buffer, 0, len);
+        if (inflater.needsDictionary()) {
+          throw new IOException("Invalid deflate data: dictionary required");
+        }
+        if (inflater.needsInput()) {
+          throw new IOException("Invalid deflate data: truncated input");
+        }
+        throw new IOException("Invalid deflate data: unable to make progress");
       }
     } catch (DataFormatException e) {
       throw new IOException("Invalid deflate data", e);

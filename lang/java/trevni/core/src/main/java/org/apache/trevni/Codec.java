@@ -33,7 +33,7 @@ abstract class Codec {
   static final String MAX_DECOMPRESS_LENGTH_PROPERTY = "org.apache.avro.limits.decompress.maxLength";
   private static final long DEFAULT_MAX_DECOMPRESS_LENGTH = 200L * 1024 * 1024; // 200MB default limit
 
-  private static long maxDecompressLength;
+  private static volatile long maxDecompressLength;
 
   private static final int DECOMPRESS_BUFFER_SIZE = 8192;
 
