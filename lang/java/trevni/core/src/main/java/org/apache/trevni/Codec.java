@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -123,6 +125,39 @@ abstract class Codec {
       totalBytes += len;
       checkDecompressLimit(totalBytes);
       out.write(buffer, 0, len);
+    }
+  }
+
+  /**
+   * Inflates data into the provided output stream while enforcing the
+   * decompression size limit and rejecting truncated or no-progress input.
+   */
+  static void boundedInflate(Inflater inflater, OutputStream out) throws IOException {
+    byte[] buffer = new byte[DECOMPRESS_BUFFER_SIZE];
+    long totalBytes = 0;
+
+    try {
+      while (true) {
+        int len = inflater.inflate(buffer);
+        if (len > 0) {
+          totalBytes += len;
+          checkDecompressLimit(totalBytes);
+          out.write(buffer, 0, len);
+          continue;
+        }
+        if (inflater.finished()) {
+          break;
+        }
+        if (inflater.needsDictionary()) {
+          throw new IOException("Invalid deflate data: dictionary required");
+        }
+        if (inflater.needsInput()) {
+          throw new IOException("Invalid deflate data: truncated input");
+        }
+        throw new IOException("Invalid deflate data: unable to make progress");
+      }
+    } catch (DataFormatException e) {
+      throw new IOException("Invalid deflate data", e);
     }
   }
 }

@@ -20,7 +20,6 @@ package org.apache.avro.file;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.Inflater;
@@ -79,35 +78,11 @@ public class DeflateCodec extends Codec {
   @Override
   public ByteBuffer decompress(ByteBuffer data) throws IOException {
     NonCopyingByteArrayOutputStream baos = new NonCopyingByteArrayOutputStream(DEFAULT_BUFFER_SIZE);
-    byte[] buffer = new byte[DEFAULT_BUFFER_SIZE];
-    long totalBytes = 0;
 
     Inflater inflater = getInflater();
     inflater.setInput(data.array(), computeOffset(data), data.remaining());
 
-    try {
-      while (true) {
-        int len = inflater.inflate(buffer);
-        if (len > 0) {
-          totalBytes += len;
-          checkDecompressLimit(totalBytes);
-          baos.write(buffer, 0, len);
-          continue;
-        }
-        if (inflater.finished()) {
-          break;
-        }
-        if (inflater.needsDictionary()) {
-          throw new IOException("Invalid deflate data: dictionary required");
-        }
-        if (inflater.needsInput()) {
-          throw new IOException("Invalid deflate data: truncated input");
-        }
-        throw new IOException("Invalid deflate data: unable to make progress");
-      }
-    } catch (DataFormatException e) {
-      throw new IOException("Invalid deflate data", e);
-    }
+    boundedInflate(inflater, baos);
 
     return baos.asByteBuffer();
   }
