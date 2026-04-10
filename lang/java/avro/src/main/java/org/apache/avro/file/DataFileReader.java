@@ -265,9 +265,17 @@ public class DataFileReader<D> extends DataFileStream<D> implements FileReader<D
   static class SeekableInputStream extends InputStream implements SeekableInput {
     private final byte[] oneByte = new byte[1];
     private final SeekableInput in;
+    private final long length;
+    private long position;
 
     SeekableInputStream(SeekableInput in) {
       this.in = in;
+      try {
+        this.length = in.length();
+        this.position = in.tell();
+      } catch (IOException e) {
+        throw new IllegalStateException("Failed to initialize seekable input state", e);
+      }
     }
 
     @Override
@@ -275,26 +283,31 @@ public class DataFileReader<D> extends DataFileStream<D> implements FileReader<D
       if (p < 0)
         throw new IOException("Illegal seek: " + p);
       in.seek(p);
+      position = p;
     }
 
     @Override
     public long tell() throws IOException {
-      return in.tell();
+      return position;
     }
 
     @Override
     public long length() throws IOException {
-      return in.length();
+      return length;
     }
 
     @Override
     public int read(byte[] b) throws IOException {
-      return in.read(b, 0, b.length);
+      return read(b, 0, b.length);
     }
 
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
-      return in.read(b, off, len);
+      int bytesRead = in.read(b, off, len);
+      if (bytesRead > 0) {
+        position += bytesRead;
+      }
+      return bytesRead;
     }
 
     @Override
@@ -309,11 +322,11 @@ public class DataFileReader<D> extends DataFileStream<D> implements FileReader<D
 
     @Override
     public long skip(long skip) throws IOException {
-      long position = in.tell();
       long skipToPosition = position + skip;
-      long length = in.length();
       in.seek(Math.min(skipToPosition, length));
-      return in.tell() - position;
+      long skipped = Math.min(skipToPosition, length) - position;
+      position += skipped;
+      return skipped;
     }
 
     @Override
@@ -324,7 +337,7 @@ public class DataFileReader<D> extends DataFileStream<D> implements FileReader<D
 
     @Override
     public int available() throws IOException {
-      long remaining = (in.length() - in.tell());
+      long remaining = length - position;
       return (int) Math.min(remaining, Integer.MAX_VALUE);
     }
   }
