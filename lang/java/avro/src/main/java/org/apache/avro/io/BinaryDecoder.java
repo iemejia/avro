@@ -109,6 +109,14 @@ public class BinaryDecoder extends Decoder {
   }
 
   BinaryDecoder configure(byte[] data, int offset, int length) {
+    if (source instanceof ByteArrayByteSource) {
+      ByteArrayByteSource byteSource = (ByteArrayByteSource) source;
+      if (byteSource.canReuse()) {
+        byteSource.reconfigure(data, offset, length, this);
+        return this;
+      }
+    }
+
     configureSource(DecoderFactory.DEFAULT_BUFFER_SIZE, new ByteArrayByteSource(data, offset, length));
     return this;
   }
@@ -538,6 +546,7 @@ public class BinaryDecoder extends Decoder {
    * necessary from the source.
    */
   public InputStream inputStream() {
+    source.markExposed();
     return source;
   }
 
@@ -663,6 +672,13 @@ public class BinaryDecoder extends Decoder {
     }
 
     abstract boolean isEof();
+
+    protected boolean canReuse() {
+      return false;
+    }
+
+    protected void markExposed() {
+    }
 
     protected void attach(int bufferSize, BinaryDecoder decoder) {
       decoder.buf = new byte[bufferSize];
@@ -922,13 +938,38 @@ public class BinaryDecoder extends Decoder {
    */
   private static class ByteArrayByteSource extends ByteSource {
     private static final int MIN_SIZE = 16;
-    private final byte[] data;
+    private byte[] data;
     private int position;
     private int max;
     private boolean compacted = false;
+    private boolean exposed = false;
 
     private ByteArrayByteSource(byte[] data, int start, int len) {
       super();
+      reconfigure(data, start, len);
+    }
+
+    @Override
+    protected boolean canReuse() {
+      return !exposed;
+    }
+
+    @Override
+    protected void markExposed() {
+      exposed = true;
+    }
+
+    private void reconfigure(byte[] data, int start, int len, BinaryDecoder decoder) {
+      reconfigure(data, start, len);
+      decoder.buf = this.data;
+      decoder.pos = this.position;
+      decoder.minPos = this.position;
+      decoder.limit = this.max;
+    }
+
+    private void reconfigure(byte[] data, int start, int len) {
+      compacted = false;
+      exposed = false;
       // make sure data is not too small, otherwise getLong may try and
       // read 10 bytes and get index out of bounds.
       if (len < MIN_SIZE) {
