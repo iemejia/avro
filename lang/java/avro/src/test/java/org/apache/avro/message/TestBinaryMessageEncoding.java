@@ -27,6 +27,11 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
@@ -206,6 +211,45 @@ public class TestBinaryMessageEncoding {
 
     assertSame(reuse, decoded);
     assertEquals(V1_RECORDS.get(2), decoded);
+  }
+
+  @Test
+  void byteArrayDecodeIsThreadSafe() throws Exception {
+    MessageEncoder<Record> encoder = new BinaryMessageEncoder<>(GenericData.get(), SCHEMA_V1);
+    BinaryMessageDecoder<Record> decoder = new BinaryMessageDecoder<>(GenericData.get(), SCHEMA_V1);
+
+    List<byte[]> encodedRecords = new ArrayList<>();
+    for (Record record : V1_RECORDS) {
+      ByteBuffer buffer = encoder.encode(record);
+      byte[] encoded = new byte[buffer.remaining()];
+      buffer.get(encoded);
+      encodedRecords.add(encoded);
+    }
+
+    ExecutorService executor = Executors.newFixedThreadPool(4);
+    try {
+      List<Callable<Void>> tasks = new ArrayList<>();
+      for (int i = 0; i < 4; i += 1) {
+        final int worker = i;
+        tasks.add(() -> {
+          for (int round = 0; round < 500; round += 1) {
+            int index = (worker + round) % encodedRecords.size();
+            Record expected = V1_RECORDS.get(index);
+            Record decoded = decoder.decode(encodedRecords.get(index), new GenericData.Record(SCHEMA_V1));
+            assertEquals(expected, decoded);
+          }
+          return null;
+        });
+      }
+
+      List<Future<Void>> futures = executor.invokeAll(tasks);
+      for (Future<Void> future : futures) {
+        future.get();
+      }
+    } finally {
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+    }
   }
 
   @Test

@@ -295,6 +295,22 @@ public class TestBinaryDecoder {
     }
   }
 
+  @Test
+  void arrayInputStreamProxyDetachedAcrossReuse() throws IOException {
+    byte[] data2 = Arrays.copyOf(data, data.length);
+    data2[0] ^= 0x55;
+    data2[data2.length - 1] ^= 0x0f;
+
+    BinaryDecoder bd = newDecoder(data, false);
+    InputStream old = bd.inputStream();
+
+    bd = this.newDecoder(data2, bd, false);
+    InputStream current = bd.inputStream();
+
+    validateInputStreamReads(old, new ByteArrayInputStream(data));
+    validateInputStreamReads(current, new ByteArrayInputStream(data2));
+  }
+
   @ParameterizedTest
   @ValueSource(booleans = { true, false })
   void inputStreamPartiallyUsed(boolean useDirect) throws IOException {
