@@ -99,8 +99,7 @@ public class RawMessageDecoder<D> extends MessageDecoder.BaseDecoder<D> {
   }
 
   D decode(byte[] encoded, int offset, int length, D reuse) {
-    BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(encoded, BYTE_ARRAY_DECODER.get());
-    decoder = DecoderFactory.get().binaryDecoder(encoded, offset, length, decoder);
+    BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(encoded, offset, length, BYTE_ARRAY_DECODER.get());
     BYTE_ARRAY_DECODER.set(decoder);
     try {
       return reader.read(reuse, decoder);
