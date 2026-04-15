@@ -47,7 +47,7 @@ public class BZip2Codec extends Codec {
         compressedData.remaining());
     try (BZip2CompressorInputStream inputStream = new BZip2CompressorInputStream(bais)) {
       ByteArrayOutputStream baos = new ByteArrayOutputStream();
-      boundedCopy(inputStream, baos);
+      DecompressLimiter.boundedCopy(inputStream, baos);
       return ByteBuffer.wrap(baos.toByteArray());
     }
   }

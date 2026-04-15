@@ -62,7 +62,7 @@ public class BZip2Codec extends Codec {
     NonCopyingByteArrayOutputStream baos = new NonCopyingByteArrayOutputStream(DEFAULT_BUFFER_SIZE);
 
     try (BZip2CompressorInputStream inputStream = new BZip2CompressorInputStream(bais)) {
-      boundedCopy(inputStream, baos);
+      DecompressLimiter.boundedCopy(inputStream, baos);
       return baos.asByteBuffer();
     }
   }
