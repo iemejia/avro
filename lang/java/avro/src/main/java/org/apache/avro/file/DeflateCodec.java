@@ -82,7 +82,7 @@ public class DeflateCodec extends Codec {
     Inflater inflater = getInflater();
     inflater.setInput(data.array(), computeOffset(data), data.remaining());
 
-    DecompressLimiter.boundedInflate(inflater, baos);
+    getLimiter().boundedInflate(inflater, baos);
 
     return baos.asByteBuffer();
   }

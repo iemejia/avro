@@ -28,6 +28,34 @@ import java.nio.ByteBuffer;
  */
 public abstract class Codec {
 
+  private final DecompressLimiter limiter;
+
+  /**
+   * Creates a codec whose decompression limit is read from the system property
+   * {@link DecompressLimiter#MAX_LENGTH_PROPERTY} at construction time.
+   */
+  protected Codec() {
+    this(DecompressLimiter.fromSystemProperty());
+  }
+
+  /**
+   * Creates a codec with an explicit decompression limiter.
+   *
+   * @param limiter the limiter to use for decompression bounds checking
+   */
+  protected Codec(DecompressLimiter limiter) {
+    this.limiter = limiter;
+  }
+
+  /**
+   * Returns the {@link DecompressLimiter} associated with this codec instance.
+   *
+   * @return the immutable decompression limiter
+   */
+  protected DecompressLimiter getLimiter() {
+    return limiter;
+  }
+
   /** Name of the codec; written to the file's metadata. */
   public abstract String getName();
 

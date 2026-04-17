@@ -71,7 +71,7 @@ public class XZCodec extends Codec {
     InputStream bytesIn = new ByteArrayInputStream(data.array(), computeOffset(data), data.remaining());
 
     try (InputStream ios = new XZCompressorInputStream(bytesIn)) {
-      DecompressLimiter.boundedCopy(ios, baos);
+      getLimiter().boundedCopy(ios, baos);
     }
     return baos.asByteBuffer();
   }

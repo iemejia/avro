@@ -70,7 +70,7 @@ public class SnappyCodec extends Codec {
     }
     int offset = computeOffset(in);
     int uncompressedSize = Snappy.uncompressedLength(in.array(), offset, in.remaining() - 4);
-    DecompressLimiter.checkLimit(uncompressedSize);
+    getLimiter().checkLimit(uncompressedSize);
     ByteBuffer out = ByteBuffer.allocate(uncompressedSize);
     int size = Snappy.uncompress(in.array(), offset, in.remaining() - 4, out.array(), 0);
     ((Buffer) out).limit(size);

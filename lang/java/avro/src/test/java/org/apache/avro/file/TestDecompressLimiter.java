@@ -40,90 +40,95 @@ import org.junit.jupiter.params.provider.ValueSource;
 public class TestDecompressLimiter {
 
   @AfterEach
-  void resetToDefault() {
+  void clearSystemProperty() {
     System.clearProperty(DecompressLimiter.MAX_LENGTH_PROPERTY);
-    DecompressLimiter.resetLimit();
   }
 
-  // ---------- resetLimit ----------
+  // ---------- constructor ----------
 
   @Test
-  void defaultLimitIs200MB() {
-    assertDoesNotThrow(() -> DecompressLimiter.checkLimit(200L * 1024 * 1024));
-    assertThrows(AvroRuntimeException.class, () -> DecompressLimiter.checkLimit(200L * 1024 * 1024 + 1));
-  }
-
-  @Test
-  void resetLimitReadsCustomProperty() {
-    setLimit(5000);
-    assertDoesNotThrow(() -> DecompressLimiter.checkLimit(5000));
-    assertThrows(AvroRuntimeException.class, () -> DecompressLimiter.checkLimit(5001));
+  void constructorRejectsZero() {
+    assertThrows(IllegalArgumentException.class, () -> new DecompressLimiter(0));
   }
 
   @Test
-  void resetLimitIgnoresZero() {
+  void constructorRejectsNegative() {
+    assertThrows(IllegalArgumentException.class, () -> new DecompressLimiter(-1));
+  }
+
+  @Test
+  void constructorAcceptsPositiveValue() {
+    DecompressLimiter limiter = new DecompressLimiter(42);
+    assertEquals(42, limiter.getMaxLength());
+  }
+
+  // ---------- fromSystemProperty ----------
+
+  @Test
+  void fromSystemPropertyDefaultIs200MB() {
+    DecompressLimiter limiter = DecompressLimiter.fromSystemProperty();
+    assertEquals(200L * 1024 * 1024, limiter.getMaxLength());
+  }
+
+  @Test
+  void fromSystemPropertyReadsCustomValue() {
+    System.setProperty(DecompressLimiter.MAX_LENGTH_PROPERTY, "5000");
+    DecompressLimiter limiter = DecompressLimiter.fromSystemProperty();
+    assertEquals(5000, limiter.getMaxLength());
+  }
+
+  @Test
+  void fromSystemPropertyIgnoresZero() {
     System.setProperty(DecompressLimiter.MAX_LENGTH_PROPERTY, "0");
-    DecompressLimiter.resetLimit();
-    // Should fall back to default 200 MB
-    assertDoesNotThrow(() -> DecompressLimiter.checkLimit(200L * 1024 * 1024));
+    DecompressLimiter limiter = DecompressLimiter.fromSystemProperty();
+    assertEquals(200L * 1024 * 1024, limiter.getMaxLength());
   }
 
   @Test
-  void resetLimitIgnoresNegativeValue() {
+  void fromSystemPropertyIgnoresNegativeValue() {
     System.setProperty(DecompressLimiter.MAX_LENGTH_PROPERTY, "-1");
-    DecompressLimiter.resetLimit();
-    assertDoesNotThrow(() -> DecompressLimiter.checkLimit(200L * 1024 * 1024));
+    DecompressLimiter limiter = DecompressLimiter.fromSystemProperty();
+    assertEquals(200L * 1024 * 1024, limiter.getMaxLength());
   }
 
   @ParameterizedTest
   @ValueSource(strings = { "abc", "", "12.5", "9999999999999999999" })
-  void resetLimitIgnoresUnparseableValues(String bad) {
+  void fromSystemPropertyIgnoresUnparseableValues(String bad) {
     System.setProperty(DecompressLimiter.MAX_LENGTH_PROPERTY, bad);
-    DecompressLimiter.resetLimit();
-    // Should fall back to default 200 MB
-    assertDoesNotThrow(() -> DecompressLimiter.checkLimit(200L * 1024 * 1024));
-  }
-
-  @Test
-  void resetLimitCanBeCalledRepeatedly() {
-    setLimit(1000);
-    assertThrows(AvroRuntimeException.class, () -> DecompressLimiter.checkLimit(1001));
-
-    setLimit(2000);
-    assertDoesNotThrow(() -> DecompressLimiter.checkLimit(1001));
-    assertThrows(AvroRuntimeException.class, () -> DecompressLimiter.checkLimit(2001));
+    DecompressLimiter limiter = DecompressLimiter.fromSystemProperty();
+    assertEquals(200L * 1024 * 1024, limiter.getMaxLength());
   }
 
   // ---------- checkLimit ----------
 
   @Test
   void checkLimitPassesWhenWithinLimit() {
-    setLimit(10_000);
-    assertDoesNotThrow(() -> DecompressLimiter.checkLimit(9_999));
+    DecompressLimiter limiter = new DecompressLimiter(10_000);
+    assertDoesNotThrow(() -> limiter.checkLimit(9_999));
   }
 
   @Test
   void checkLimitPassesAtExactBoundary() {
-    setLimit(10_000);
-    assertDoesNotThrow(() -> DecompressLimiter.checkLimit(10_000));
+    DecompressLimiter limiter = new DecompressLimiter(10_000);
+    assertDoesNotThrow(() -> limiter.checkLimit(10_000));
   }
 
   @Test
   void checkLimitThrowsOneByteOverBoundary() {
-    setLimit(10_000);
-    assertThrows(AvroRuntimeException.class, () -> DecompressLimiter.checkLimit(10_001));
+    DecompressLimiter limiter = new DecompressLimiter(10_000);
+    assertThrows(AvroRuntimeException.class, () -> limiter.checkLimit(10_001));
   }
 
   @Test
   void checkLimitPassesForZeroSize() {
-    setLimit(1);
-    assertDoesNotThrow(() -> DecompressLimiter.checkLimit(0));
+    DecompressLimiter limiter = new DecompressLimiter(1);
+    assertDoesNotThrow(() -> limiter.checkLimit(0));
   }
 
   @Test
   void checkLimitExceptionContainsUsefulDetails() {
-    setLimit(1024);
-    AvroRuntimeException ex = assertThrows(AvroRuntimeException.class, () -> DecompressLimiter.checkLimit(2048));
+    DecompressLimiter limiter = new DecompressLimiter(1024);
+    AvroRuntimeException ex = assertThrows(AvroRuntimeException.class, () -> limiter.checkLimit(2048));
     assertTrue(ex.getMessage().contains("2048"), "should contain actual size");
     assertTrue(ex.getMessage().contains("1024"), "should contain configured limit");
     assertTrue(ex.getMessage().contains(DecompressLimiter.MAX_LENGTH_PROPERTY), "should name the system property");
@@ -133,42 +138,42 @@ public class TestDecompressLimiter {
 
   @Test
   void boundedCopyTransfersAllDataWithinLimit() throws IOException {
-    setLimit(100_000);
+    DecompressLimiter limiter = new DecompressLimiter(100_000);
     byte[] data = generateData(50_000);
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    DecompressLimiter.boundedCopy(new ByteArrayInputStream(data), out);
+    limiter.boundedCopy(new ByteArrayInputStream(data), out);
 
     assertArrayEquals(data, out.toByteArray());
   }
 
   @Test
   void boundedCopyThrowsWhenDataExceedsLimit() {
-    setLimit(1_000);
+    DecompressLimiter limiter = new DecompressLimiter(1_000);
     byte[] data = generateData(5_000);
 
     assertThrows(AvroRuntimeException.class,
-        () -> DecompressLimiter.boundedCopy(new ByteArrayInputStream(data), new ByteArrayOutputStream()));
+        () -> limiter.boundedCopy(new ByteArrayInputStream(data), new ByteArrayOutputStream()));
   }
 
   @Test
   void boundedCopyPassesAtExactBoundary() throws IOException {
     int size = 10_000;
-    setLimit(size);
+    DecompressLimiter limiter = new DecompressLimiter(size);
     byte[] data = generateData(size);
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    DecompressLimiter.boundedCopy(new ByteArrayInputStream(data), out);
+    limiter.boundedCopy(new ByteArrayInputStream(data), out);
 
     assertArrayEquals(data, out.toByteArray());
   }
 
   @Test
   void boundedCopyHandlesEmptyStream() throws IOException {
-    setLimit(1);
+    DecompressLimiter limiter = new DecompressLimiter(1);
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    DecompressLimiter.boundedCopy(new ByteArrayInputStream(new byte[0]), out);
+    limiter.boundedCopy(new ByteArrayInputStream(new byte[0]), out);
 
     assertEquals(0, out.size());
   }
@@ -179,13 +184,13 @@ public class TestDecompressLimiter {
   void boundedInflateDecompressesCorrectly() throws IOException {
     byte[] original = generateData(10_000);
     byte[] deflated = deflateRaw(original);
-    setLimit(100_000);
+    DecompressLimiter limiter = new DecompressLimiter(100_000);
 
     Inflater inflater = new Inflater(true);
     inflater.setInput(deflated);
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    DecompressLimiter.boundedInflate(inflater, out);
+    limiter.boundedInflate(inflater, out);
     inflater.end();
 
     assertArrayEquals(original, out.toByteArray());
@@ -195,13 +200,12 @@ public class TestDecompressLimiter {
   void boundedInflateThrowsWhenOutputExceedsLimit() {
     byte[] original = generateData(10_000);
     byte[] deflated = deflateRaw(original);
-    setLimit(1_000);
+    DecompressLimiter limiter = new DecompressLimiter(1_000);
 
     Inflater inflater = new Inflater(true);
     inflater.setInput(deflated);
 
-    assertThrows(AvroRuntimeException.class,
-        () -> DecompressLimiter.boundedInflate(inflater, new ByteArrayOutputStream()));
+    assertThrows(AvroRuntimeException.class, () -> limiter.boundedInflate(inflater, new ByteArrayOutputStream()));
     inflater.end();
   }
 
@@ -210,13 +214,13 @@ public class TestDecompressLimiter {
     byte[] deflated = deflateRaw(generateData(10_000));
     byte[] truncated = new byte[deflated.length / 2];
     System.arraycopy(deflated, 0, truncated, 0, truncated.length);
-    setLimit(100_000);
+    DecompressLimiter limiter = new DecompressLimiter(100_000);
 
     Inflater inflater = new Inflater(true);
     inflater.setInput(truncated);
 
     IOException ex = assertThrows(IOException.class,
-        () -> DecompressLimiter.boundedInflate(inflater, new ByteArrayOutputStream()));
+        () -> limiter.boundedInflate(inflater, new ByteArrayOutputStream()));
     assertTrue(ex.getMessage().contains("Invalid deflate data"));
     inflater.end();
   }
@@ -224,13 +228,13 @@ public class TestDecompressLimiter {
   @Test
   void boundedInflateRejectsCorruptData() {
     byte[] garbage = { 0x00, 0x01, 0x02, 0x03, (byte) 0xFF };
-    setLimit(100_000);
+    DecompressLimiter limiter = new DecompressLimiter(100_000);
 
     Inflater inflater = new Inflater(true);
     inflater.setInput(garbage);
 
     IOException ex = assertThrows(IOException.class,
-        () -> DecompressLimiter.boundedInflate(inflater, new ByteArrayOutputStream()));
+        () -> limiter.boundedInflate(inflater, new ByteArrayOutputStream()));
     assertTrue(ex.getMessage().contains("Invalid deflate data"));
     inflater.end();
   }
@@ -239,6 +243,10 @@ public class TestDecompressLimiter {
   //
   // Verify that every compressing Avro codec actually delegates to
   // DecompressLimiter so the protection cannot be silently bypassed.
+  //
+  // The system property is set BEFORE creating codec instances because
+  // the limit is captured at construction time (via Codec's no-arg
+  // constructor calling DecompressLimiter.fromSystemProperty()).
 
   static Stream<Arguments> compressibleCodecTypes() {
     return Stream.of(Arguments.of("deflate"), Arguments.of("bzip2"), Arguments.of("xz"), Arguments.of("zstandard"),
@@ -248,10 +256,11 @@ public class TestDecompressLimiter {
   @ParameterizedTest
   @MethodSource("compressibleCodecTypes")
   void codecRejectsDecompressionBomb(String codecName) throws IOException {
-    setLimit(1024);
+    // Set property BEFORE creating the codec so the limit is captured
+    System.setProperty(DecompressLimiter.MAX_LENGTH_PROPERTY, "1024");
+    Codec codec = CodecFactory.fromString(codecName).createInstance();
 
     byte[] input = TestAllCodecs.generateTestData(10_000);
-    Codec codec = CodecFactory.fromString(codecName).createInstance();
     ByteBuffer compressed = codec.compress(ByteBuffer.wrap(input));
 
     assertThrows(AvroRuntimeException.class, () -> codec.decompress(compressed));
@@ -260,10 +269,10 @@ public class TestDecompressLimiter {
   @ParameterizedTest
   @MethodSource("compressibleCodecTypes")
   void codecAllowsDataWithinLimit(String codecName) throws IOException {
-    setLimit(100 * 1024);
+    System.setProperty(DecompressLimiter.MAX_LENGTH_PROPERTY, String.valueOf(100 * 1024));
+    Codec codec = CodecFactory.fromString(codecName).createInstance();
 
     byte[] input = TestAllCodecs.generateTestData(50_000);
-    Codec codec = CodecFactory.fromString(codecName).createInstance();
     ByteBuffer compressed = codec.compress(ByteBuffer.wrap(input));
 
     assertEquals(ByteBuffer.wrap(input), codec.decompress(compressed));
@@ -271,20 +280,15 @@ public class TestDecompressLimiter {
 
   @Test
   void nullCodecBypassesLimit() throws IOException {
-    setLimit(1);
+    System.setProperty(DecompressLimiter.MAX_LENGTH_PROPERTY, "1");
+    Codec codec = CodecFactory.fromString("null").createInstance();
 
     byte[] input = TestAllCodecs.generateTestData(10_000);
-    Codec codec = CodecFactory.fromString("null").createInstance();
 
     assertEquals(ByteBuffer.wrap(input), codec.decompress(codec.compress(ByteBuffer.wrap(input))));
   }
 
   // ---------- helpers ----------
-
-  private static void setLimit(long limit) {
-    System.setProperty(DecompressLimiter.MAX_LENGTH_PROPERTY, String.valueOf(limit));
-    DecompressLimiter.resetLimit();
-  }
 
   private static byte[] generateData(int size) {
     byte[] data = new byte[size];

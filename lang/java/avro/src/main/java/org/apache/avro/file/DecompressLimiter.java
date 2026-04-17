@@ -28,18 +28,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Thread-safe guard against decompression bomb (zip bomb) attacks. Enforces a
- * configurable upper bound on decompressed output size.
+ * Immutable guard against decompression bomb (zip bomb) attacks. Enforces an
+ * upper bound on decompressed output size.
  *
  * <p>
- * The maximum size is controlled by the system property
- * {@value #MAX_LENGTH_PROPERTY}. The default is 200&nbsp;MB.
+ * Instances are immutable and therefore unconditionally thread-safe. The limit
+ * is captured once at construction time and never changes.
  *
  * <p>
- * All public methods are safe to call from any thread. The bounded I/O
- * operations ({@link #boundedCopy} and {@link #boundedInflate}) capture a
- * snapshot of the limit before they start, so a concurrent call to
- * {@link #resetLimit()} cannot cause inconsistent behaviour mid-operation.
+ * The factory method {@link #fromSystemProperty()} reads the system property
+ * {@value #MAX_LENGTH_PROPERTY} and returns an instance with that limit (or the
+ * default of 200&nbsp;MB when the property is absent or invalid).
  */
 public final class DecompressLimiter {
 
@@ -52,26 +51,32 @@ public final class DecompressLimiter {
 
   private static final int BUFFER_SIZE = 8192;
 
-  /**
-   * Current limit. Declared volatile so that a write from any thread is
-   * immediately visible to all other threads.
-   */
-  private static volatile long maxLength;
-
-  static {
-    resetLimit();
-  }
-
-  private DecompressLimiter() {
-    // utility class -- not instantiable
-  }
+  /** The maximum decompressed size in bytes enforced by this instance. */
+  private final long maxLength;
 
   /**
-   * Re-read the decompression limit from the system property. Values that are not
-   * positive longs are ignored (with a warning) and the default is used.
+   * Creates a limiter with the given maximum decompressed size.
+   *
+   * @param maxLength the maximum number of decompressed bytes allowed; must be
+   *                  positive
+   * @throws IllegalArgumentException if {@code maxLength} is not positive
    */
-  // VisibleForTesting
-  public static void resetLimit() {
+  public DecompressLimiter(long maxLength) {
+    if (maxLength <= 0) {
+      throw new IllegalArgumentException("maxLength must be positive, got: " + maxLength);
+    }
+    this.maxLength = maxLength;
+  }
+
+  /**
+   * Creates a {@code DecompressLimiter} by reading the system property
+   * {@value #MAX_LENGTH_PROPERTY}. If the property is absent, not a valid
+   * positive long, or otherwise unparseable, the default limit of 200&nbsp;MB is
+   * used.
+   *
+   * @return a new immutable {@code DecompressLimiter}
+   */
+  public static DecompressLimiter fromSystemProperty() {
     String prop = System.getProperty(MAX_LENGTH_PROPERTY);
     long limit = DEFAULT_MAX_LENGTH;
     if (prop != null) {
@@ -88,7 +93,16 @@ public final class DecompressLimiter {
             DEFAULT_MAX_LENGTH);
       }
     }
-    maxLength = limit;
+    return new DecompressLimiter(limit);
+  }
+
+  /**
+   * Returns the maximum decompressed size enforced by this instance.
+   *
+   * @return the limit in bytes
+   */
+  public long getMaxLength() {
+    return maxLength;
   }
 
   /**
@@ -98,7 +112,7 @@ public final class DecompressLimiter {
    *
    * @param size the (expected) decompressed size in bytes
    */
-  public static void checkLimit(long size) {
+  public void checkLimit(long size) {
     checkAgainst(size, maxLength);
   }
 
@@ -107,23 +121,18 @@ public final class DecompressLimiter {
    * {@link OutputStream}, aborting if the total bytes written exceed the
    * configured limit.
    *
-   * <p>
-   * The limit is captured once at the start of the call so that a concurrent
-   * {@link #resetLimit()} cannot cause the check to flip mid-stream.
-   *
    * @param in  the decompression input stream
    * @param out the output stream to write decompressed data to
    * @throws IOException          if an I/O error occurs
    * @throws AvroRuntimeException if the decompressed size exceeds the limit
    */
-  public static void boundedCopy(InputStream in, OutputStream out) throws IOException {
-    final long limit = maxLength; // snapshot
+  public void boundedCopy(InputStream in, OutputStream out) throws IOException {
     byte[] buffer = new byte[BUFFER_SIZE];
     long totalBytes = 0;
     int len;
     while ((len = in.read(buffer)) != -1) {
       totalBytes += len;
-      checkAgainst(totalBytes, limit);
+      checkAgainst(totalBytes, maxLength);
       out.write(buffer, 0, len);
     }
   }
@@ -132,17 +141,12 @@ public final class DecompressLimiter {
    * Inflates data into the provided output stream while enforcing the
    * decompression size limit and rejecting truncated or corrupt input.
    *
-   * <p>
-   * The limit is captured once at the start of the call so that a concurrent
-   * {@link #resetLimit()} cannot cause the check to flip mid-stream.
-   *
    * @param inflater a {@link Inflater} whose input has already been set
    * @param out      the output stream to write inflated data to
    * @throws IOException          if the deflate data is invalid or truncated
    * @throws AvroRuntimeException if the decompressed size exceeds the limit
    */
-  public static void boundedInflate(Inflater inflater, OutputStream out) throws IOException {
-    final long limit = maxLength; // snapshot
+  public void boundedInflate(Inflater inflater, OutputStream out) throws IOException {
     byte[] buffer = new byte[BUFFER_SIZE];
     long totalBytes = 0;
 
@@ -151,7 +155,7 @@ public final class DecompressLimiter {
         int len = inflater.inflate(buffer);
         if (len > 0) {
           totalBytes += len;
-          checkAgainst(totalBytes, limit);
+          checkAgainst(totalBytes, maxLength);
           out.write(buffer, 0, len);
           continue;
         }
