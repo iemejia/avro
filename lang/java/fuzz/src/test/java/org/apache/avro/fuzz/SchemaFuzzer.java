@@ -30,10 +30,12 @@ import org.apache.avro.SchemaParser;
  * are allowed to escape so Jazzer can report them as real findings.
  * </p>
  */
-class SchemaFuzzer {
+public class SchemaFuzzer {
 
-  @FuzzTest
-  void fuzzSchemaParse(FuzzedDataProvider data) {
+  /**
+   * OSS-Fuzz entry point. Jazzer driver calls this static method directly.
+   */
+  public static void fuzzerTestOneInput(FuzzedDataProvider data) {
     String schemaJson = FuzzSupport.buildSchemaInput(data);
     try {
       new SchemaParser().parse(schemaJson).mainSchema();
@@ -42,5 +44,10 @@ class SchemaFuzzer {
         throw e;
       }
     }
+  }
+
+  @FuzzTest
+  void fuzzSchemaParse(FuzzedDataProvider data) {
+    fuzzerTestOneInput(data);
   }
 }

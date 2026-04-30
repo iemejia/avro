@@ -37,9 +37,12 @@ import java.nio.charset.StandardCharsets;
  * coercion, union resolution, logical types, and malformed-input handling.
  * </p>
  */
-class JsonDecodingFuzzer {
-  @FuzzTest
-  void fuzzJsonDecoding(FuzzedDataProvider data) {
+public class JsonDecodingFuzzer {
+
+  /**
+   * OSS-Fuzz entry point. Jazzer driver calls this static method directly.
+   */
+  public static void fuzzerTestOneInput(FuzzedDataProvider data) {
     String jsonData = FuzzSupport.buildJsonInput(data);
     ByteArrayInputStream input = new ByteArrayInputStream(jsonData.getBytes(StandardCharsets.UTF_8));
     try {
@@ -56,5 +59,10 @@ class JsonDecodingFuzzer {
         throw e;
       }
     }
+  }
+
+  @FuzzTest
+  void fuzzJsonDecoding(FuzzedDataProvider data) {
+    fuzzerTestOneInput(data);
   }
 }

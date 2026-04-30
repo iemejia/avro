@@ -39,12 +39,48 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-class ProjectionFuzzer {
+/**
+ * Fuzz tests for Avro schema projection (reading data with a different schema
+ * than used to write it), covering both Specific and Reflect APIs.
+ */
+public class ProjectionFuzzer {
   private static final ReflectData REFLECT_DATA = ReflectData.get();
+
+  /**
+   * OSS-Fuzz entry point. Multiplexes between Specific and Reflect projection
+   * modes using the first byte of fuzz input.
+   */
+  public static void fuzzerTestOneInput(FuzzedDataProvider data) {
+    int mode = data.consumeInt(0, 1);
+    try {
+      switch (mode) {
+      case 0:
+        specificProjection(buildSpecificRecord(data));
+        break;
+      default:
+        reflectProjection(buildReflectRecord(data));
+        break;
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Unexpected IOException in projection fuzz", e);
+    }
+  }
+
+  // --- JUnit @FuzzTest entry points for local fuzzing ---
 
   @FuzzTest
   void fuzzSpecificProjection(FuzzedDataProvider data) throws IOException {
-    SpecificProjectionRecord record = buildSpecificRecord(data);
+    specificProjection(buildSpecificRecord(data));
+  }
+
+  @FuzzTest
+  void fuzzReflectProjection(FuzzedDataProvider data) throws IOException {
+    reflectProjection(buildReflectRecord(data));
+  }
+
+  // --- Shared projection logic ---
+
+  private static void specificProjection(SpecificProjectionRecord record) throws IOException {
     byte[] encoded = encodeSpecific(record);
 
     BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(encoded, null);
@@ -59,9 +95,7 @@ class ProjectionFuzzer {
     }
   }
 
-  @FuzzTest
-  void fuzzReflectProjection(FuzzedDataProvider data) throws IOException {
-    ReflectRoundTripRecord record = buildReflectRecord(data);
+  private static void reflectProjection(ReflectRoundTripRecord record) throws IOException {
     byte[] encoded = encodeReflect(record);
 
     BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(encoded, null);
@@ -75,6 +109,8 @@ class ProjectionFuzzer {
       throw new AssertionError("Reflect projection left trailing bytes unread");
     }
   }
+
+  // --- Encoding helpers ---
 
   private static byte[] encodeSpecific(SpecificProjectionRecord record) throws IOException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -94,6 +130,8 @@ class ProjectionFuzzer {
     encoder.flush();
     return output.toByteArray();
   }
+
+  // --- Record builders ---
 
   private static SpecificProjectionRecord buildSpecificRecord(FuzzedDataProvider data) {
     List<String> nicknames = new ArrayList<>();

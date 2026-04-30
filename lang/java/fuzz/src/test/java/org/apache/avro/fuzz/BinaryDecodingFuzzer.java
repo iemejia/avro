@@ -35,7 +35,20 @@ import java.io.IOException;
  * types, and recursive records.
  * </p>
  */
-class BinaryDecodingFuzzer {
+public class BinaryDecodingFuzzer {
+
+  /**
+   * OSS-Fuzz entry point. Multiplexes between buffered and direct binary decoding
+   * using the first byte of fuzz input as a mode selector.
+   */
+  public static void fuzzerTestOneInput(byte[] data) {
+    if (data.length < 1) {
+      return;
+    }
+    boolean direct = (data[0] & 1) == 1;
+    byte[] payload = java.util.Arrays.copyOfRange(data, 1, data.length);
+    fuzz(payload, direct);
+  }
 
   @FuzzTest
   void fuzzBinaryDecoding(byte[] data) {
@@ -47,7 +60,7 @@ class BinaryDecodingFuzzer {
     fuzz(data, true);
   }
 
-  private void fuzz(byte[] data, boolean direct) {
+  private static void fuzz(byte[] data, boolean direct) {
     try {
       BinaryDecoder decoder = direct ? DecoderFactory.get().directBinaryDecoder(FuzzSupport.shortReadStream(data), null)
           : DecoderFactory.get().binaryDecoder(data, null);

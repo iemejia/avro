@@ -43,15 +43,36 @@ import java.io.IOException;
  * are swallowed, while likely bug-indicating runtime failures are rethrown.
  * </p>
  */
-class DataFileReaderFuzzer {
+public class DataFileReaderFuzzer {
 
   /**
-   * Fuzz the seekable {@link DataFileReader} path via
-   * {@link SeekableByteArrayInput}, exercising random-access container file
-   * reading including block seeking.
+   * OSS-Fuzz entry point. Multiplexes between seekable/stream modes with and
+   * without schema resolution using the first byte of fuzz input.
    */
-  @FuzzTest
-  void fuzzDataFileReader(byte[] data) {
+  public static void fuzzerTestOneInput(byte[] data) {
+    if (data.length < 1) {
+      return;
+    }
+    int mode = data[0] & 0x03;
+    byte[] payload = java.util.Arrays.copyOfRange(data, 1, data.length);
+
+    switch (mode) {
+    case 0:
+      fuzzSeekable(payload);
+      break;
+    case 1:
+      fuzzSeekableWithResolution(payload);
+      break;
+    case 2:
+      fuzzStream(payload);
+      break;
+    default:
+      fuzzStreamWithResolution(payload);
+      break;
+    }
+  }
+
+  private static void fuzzSeekable(byte[] data) {
     try (DataFileReader<GenericRecord> reader = new DataFileReader<>(new SeekableByteArrayInput(data),
         new GenericDatumReader<>())) {
       while (reader.hasNext()) {
@@ -64,67 +85,80 @@ class DataFileReaderFuzzer {
         throw e;
       }
     } catch (OutOfMemoryError e) {
-      // Fuzzed varint-encoded lengths can trigger huge allocations from small
-      // inputs. This is a known limitation, not a logic bug.
+      // Fuzzed varint-encoded lengths can trigger huge allocations.
     }
+  }
+
+  private static void fuzzSeekableWithResolution(byte[] data) {
+    try (DataFileReader<GenericRecord> reader = new DataFileReader<>(new SeekableByteArrayInput(data),
+        new GenericDatumReader<>(null, FuzzSupport.BINARY_READER_SCHEMA))) {
+      while (reader.hasNext()) {
+        reader.next();
+      }
+    } catch (IOException e) {
+      // Expected for malformed container files.
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedContainerFailure(e)) {
+        throw e;
+      }
+    } catch (OutOfMemoryError e) {
+      // Fuzzed varint-encoded lengths can trigger huge allocations.
+    }
+  }
+
+  private static void fuzzStream(byte[] data) {
+    try (DataFileStream<GenericRecord> stream = new DataFileStream<>(new ByteArrayInputStream(data),
+        new GenericDatumReader<>())) {
+      while (stream.hasNext()) {
+        stream.next();
+      }
+    } catch (IOException e) {
+      // Expected for malformed container files.
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedContainerFailure(e)) {
+        throw e;
+      }
+    } catch (OutOfMemoryError e) {
+      // Fuzzed varint-encoded lengths can trigger huge allocations.
+    }
+  }
+
+  private static void fuzzStreamWithResolution(byte[] data) {
+    try (DataFileStream<GenericRecord> stream = new DataFileStream<>(new ByteArrayInputStream(data),
+        new GenericDatumReader<>(null, FuzzSupport.BINARY_READER_SCHEMA))) {
+      while (stream.hasNext()) {
+        stream.next();
+      }
+    } catch (IOException e) {
+      // Expected for malformed container files.
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedContainerFailure(e)) {
+        throw e;
+      }
+    } catch (OutOfMemoryError e) {
+      // Fuzzed varint-encoded lengths can trigger huge allocations.
+    }
+  }
+
+  // --- JUnit @FuzzTest entry points for local fuzzing ---
+
+  @FuzzTest
+  void fuzzDataFileReader(byte[] data) {
+    fuzzSeekable(data);
   }
 
   @FuzzTest
   void fuzzDataFileReaderWithResolution(byte[] data) {
-    try (DataFileReader<GenericRecord> reader = new DataFileReader<>(new SeekableByteArrayInput(data),
-        new GenericDatumReader<>(null, FuzzSupport.BINARY_READER_SCHEMA))) {
-      while (reader.hasNext()) {
-        reader.next();
-      }
-    } catch (IOException e) {
-      // Expected for malformed container files.
-    } catch (RuntimeException e) {
-      if (!FuzzSupport.isExpectedContainerFailure(e)) {
-        throw e;
-      }
-    } catch (OutOfMemoryError e) {
-      // Fuzzed varint-encoded lengths can trigger huge allocations
-    }
+    fuzzSeekableWithResolution(data);
   }
 
-  /**
-   * Fuzz the streaming {@link DataFileStream} path via
-   * {@link ByteArrayInputStream}, exercising sequential (non-seekable) container
-   * file reading.
-   */
   @FuzzTest
   void fuzzDataFileStream(byte[] data) {
-    try (DataFileStream<GenericRecord> stream = new DataFileStream<>(new ByteArrayInputStream(data),
-        new GenericDatumReader<>())) {
-      while (stream.hasNext()) {
-        stream.next();
-      }
-    } catch (IOException e) {
-      // Expected for malformed container files.
-    } catch (RuntimeException e) {
-      if (!FuzzSupport.isExpectedContainerFailure(e)) {
-        throw e;
-      }
-    } catch (OutOfMemoryError e) {
-      // Fuzzed varint-encoded lengths can trigger huge allocations
-    }
+    fuzzStream(data);
   }
 
   @FuzzTest
   void fuzzDataFileStreamWithResolution(byte[] data) {
-    try (DataFileStream<GenericRecord> stream = new DataFileStream<>(new ByteArrayInputStream(data),
-        new GenericDatumReader<>(null, FuzzSupport.BINARY_READER_SCHEMA))) {
-      while (stream.hasNext()) {
-        stream.next();
-      }
-    } catch (IOException e) {
-      // Expected for malformed container files.
-    } catch (RuntimeException e) {
-      if (!FuzzSupport.isExpectedContainerFailure(e)) {
-        throw e;
-      }
-    } catch (OutOfMemoryError e) {
-      // Fuzzed varint-encoded lengths can trigger huge allocations
-    }
+    fuzzStreamWithResolution(data);
   }
 }

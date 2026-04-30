@@ -27,14 +27,54 @@ import org.apache.avro.message.BinaryMessageEncoder;
 import org.apache.avro.message.MissingSchemaException;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-class SingleObjectFuzzer {
+/**
+ * Fuzz tests for Avro's single-object encoding format.
+ *
+ * <p>
+ * Covers both round-trip integrity (encode then decode a structured record) and
+ * raw decoding of arbitrary bytes through {@link BinaryMessageDecoder}.
+ * </p>
+ */
+public class SingleObjectFuzzer {
+
+  /**
+   * OSS-Fuzz entry point. Multiplexes between roundtrip and raw decoding modes
+   * using the first byte of fuzz input.
+   */
+  public static void fuzzerTestOneInput(FuzzedDataProvider data) {
+    int mode = data.consumeInt(0, 1);
+    try {
+      switch (mode) {
+      case 0:
+        singleObjectRoundTrip(FuzzSupport.buildRoundTripRecord(data));
+        break;
+      default:
+        singleObjectDecode(data.consumeRemainingAsBytes());
+        break;
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Unexpected IOException in single-object fuzz", e);
+    }
+  }
+
+  // --- JUnit @FuzzTest entry points for local fuzzing ---
+
   @FuzzTest
   void fuzzSingleObjectRoundTrip(FuzzedDataProvider data) throws IOException {
-    GenericRecord record = FuzzSupport.buildRoundTripRecord(data);
+    singleObjectRoundTrip(FuzzSupport.buildRoundTripRecord(data));
+  }
+
+  @FuzzTest
+  void fuzzSingleObjectDecoding(byte[] data) throws IOException {
+    singleObjectDecode(data);
+  }
+
+  // --- Shared logic ---
+
+  private static void singleObjectRoundTrip(GenericRecord record) throws IOException {
     BinaryMessageEncoder<GenericRecord> encoder = new BinaryMessageEncoder<>(GenericData.get(),
         FuzzSupport.ROUND_TRIP_SCHEMA);
     BinaryMessageDecoder<GenericRecord> decoder = new BinaryMessageDecoder<>(GenericData.get(),
@@ -48,8 +88,7 @@ class SingleObjectFuzzer {
     }
   }
 
-  @FuzzTest
-  void fuzzSingleObjectDecoding(byte[] data) throws IOException {
+  private static void singleObjectDecode(byte[] data) throws IOException {
     BinaryMessageDecoder<GenericRecord> decoder = new BinaryMessageDecoder<>(GenericData.get(),
         FuzzSupport.ROUND_TRIP_SCHEMA);
     try (ByteArrayInputStream input = new ByteArrayInputStream(data)) {
