@@ -142,8 +142,7 @@ public class DataFileStream<D> implements Iterator<D>, Iterable<D>, Closeable {
     header.metaKeyList = Collections.unmodifiableList(header.metaKeyList);
     String schemaString = getMetaString(DataFileConstants.SCHEMA);
     if (schemaString == null) {
-      throw new AvroRuntimeException(
-          "No schema in Avro data file metadata (missing '" + DataFileConstants.SCHEMA + "' key)");
+      throw new IOException("Invalid data file: missing schema in header metadata.");
     }
     header.schema = new Schema.Parser(NameValidator.NO_VALIDATION).setValidateDefaults(false).parse(schemaString);
     this.codec = resolveCodec();
