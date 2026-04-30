@@ -25,6 +25,7 @@ import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 
 /**
  * Fuzz tests for Avro data file (container format) reading.
@@ -38,10 +39,8 @@ import java.io.ByteArrayInputStream;
  *
  * <p>
  * Because the container format includes an embedded schema, malformed input can
- * trigger virtually any exception from the schema parser, binary decoder, or
- * codec layer. Only exceptions that indicate internal bugs (such as
- * {@link NullPointerException}, {@link ArrayIndexOutOfBoundsException}, or
- * {@link ClassCastException}) are propagated.
+ * fail in the IO, schema parsing, or decoding layers. Those expected failures
+ * are swallowed, while likely bug-indicating runtime failures are rethrown.
  * </p>
  */
 class DataFileReaderFuzzer {
@@ -58,8 +57,12 @@ class DataFileReaderFuzzer {
       while (reader.hasNext()) {
         reader.next();
       }
-    } catch (Exception e) {
-      FuzzSupport.rethrowIfUnexpectedContainerFailure(e);
+    } catch (IOException e) {
+      // Expected for malformed container files.
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedContainerFailure(e)) {
+        throw e;
+      }
     } catch (OutOfMemoryError e) {
       // Fuzzed varint-encoded lengths can trigger huge allocations from small
       // inputs. This is a known limitation, not a logic bug.
@@ -73,8 +76,12 @@ class DataFileReaderFuzzer {
       while (reader.hasNext()) {
         reader.next();
       }
-    } catch (Exception e) {
-      FuzzSupport.rethrowIfUnexpectedContainerFailure(e);
+    } catch (IOException e) {
+      // Expected for malformed container files.
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedContainerFailure(e)) {
+        throw e;
+      }
     } catch (OutOfMemoryError e) {
       // Fuzzed varint-encoded lengths can trigger huge allocations
     }
@@ -92,8 +99,12 @@ class DataFileReaderFuzzer {
       while (stream.hasNext()) {
         stream.next();
       }
-    } catch (Exception e) {
-      FuzzSupport.rethrowIfUnexpectedContainerFailure(e);
+    } catch (IOException e) {
+      // Expected for malformed container files.
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedContainerFailure(e)) {
+        throw e;
+      }
     } catch (OutOfMemoryError e) {
       // Fuzzed varint-encoded lengths can trigger huge allocations
     }
@@ -106,8 +117,12 @@ class DataFileReaderFuzzer {
       while (stream.hasNext()) {
         stream.next();
       }
-    } catch (Exception e) {
-      FuzzSupport.rethrowIfUnexpectedContainerFailure(e);
+    } catch (IOException e) {
+      // Expected for malformed container files.
+    } catch (RuntimeException e) {
+      if (!FuzzSupport.isExpectedContainerFailure(e)) {
+        throw e;
+      }
     } catch (OutOfMemoryError e) {
       // Fuzzed varint-encoded lengths can trigger huge allocations
     }

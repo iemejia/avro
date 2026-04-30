@@ -89,24 +89,14 @@ final class FuzzSupport {
   private FuzzSupport() {
   }
 
-  /**
-   * Rethrow an exception from data file reading only if it indicates a real bug.
-   * Container format fuzzing can trigger virtually any exception type (schema
-   * parsing, decoding, codec, IO) from random input. Only
-   * {@link NullPointerException}, {@link ArrayIndexOutOfBoundsException}, and
-   * {@link ClassCastException} are considered unexpected — they suggest missing
-   * null/bounds/type checks in the library code.
-   */
-  static void rethrowIfUnexpectedContainerFailure(Exception exception) {
+  static boolean isExpectedContainerFailure(RuntimeException exception) {
     if (exception instanceof NullPointerException || exception instanceof ArrayIndexOutOfBoundsException
         || exception instanceof ClassCastException) {
-      if (exception instanceof RuntimeException) {
-        throw (RuntimeException) exception;
-      }
+      return false;
     }
-    // All other exceptions are expected for malformed container files:
-    // IOException, AvroRuntimeException, SchemaParseException, AvroTypeException,
-    // IllegalArgumentException, UnsupportedOperationException, etc.
+
+    return exception instanceof AvroRuntimeException || isExpectedDecodingIllegalArgument(exception)
+        || isExpectedUnsupportedOperation(exception);
   }
 
   static boolean isExpectedSchemaFailure(RuntimeException exception) {
