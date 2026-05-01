@@ -334,7 +334,11 @@ public class ParseContext {
     }
 
     if (NAMED_SCHEMA_TYPES.contains(schema.getType()) && schema.getFullName() != null) {
-      return requireNonNull(oldSchemas.get(schema.getFullName()), () -> "Unknown schema: " + schema.getFullName());
+      Schema resolved = oldSchemas.get(schema.getFullName());
+      if (resolved == null) {
+        throw new AvroTypeException("Unknown schema: " + schema.getFullName());
+      }
+      return resolved;
     } else {
       // Unnamed or anonymous schema
       // (protocol message request parameters are anonymous records)

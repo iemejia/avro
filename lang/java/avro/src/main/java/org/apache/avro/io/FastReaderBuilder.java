@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 
+import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.AvroTypeException;
 import org.apache.avro.Conversion;
 import org.apache.avro.Conversions;
@@ -410,6 +411,11 @@ public class FastReaderBuilder {
   private FieldReader createUnionReader(FieldReader[] unionReaders) {
     return reusingReader((reuse, decoder) -> {
       final int selection = decoder.readIndex();
+      if (selection < 0 || selection >= unionReaders.length) {
+        throw new AvroRuntimeException(
+            "Malformed data. Union index " + selection + " is out of bounds for union with " + unionReaders.length
+                + (unionReaders.length == 1 ? " branch." : " branches."));
+      }
       return unionReaders[selection].read(null, decoder);
     });
 
@@ -489,6 +495,11 @@ public class FastReaderBuilder {
   private FieldReader createEnumReader(EnumAdjust action) {
     return reusingReader((reuse, decoder) -> {
       int index = decoder.readEnum();
+      if (index < 0 || index >= action.values.length) {
+        throw new AvroRuntimeException(
+            "Malformed data. Enum index " + index + " is out of bounds for enum with " + action.values.length
+                + (action.values.length == 1 ? " symbol." : " symbols."));
+      }
       Object resultObject = action.values[index];
       if (resultObject == null) {
         throw new AvroTypeException("No match for " + action.writer.getEnumSymbols().get(index));

@@ -95,7 +95,10 @@ final class FuzzSupport {
       return false;
     }
 
-    return exception instanceof AvroRuntimeException || isExpectedDecodingIllegalArgument(exception)
+    // SchemaParseException and AvroTypeException are expected when a container
+    // file's embedded schema is corrupted or incompatible with the reader schema.
+    return exception instanceof SchemaParseException || exception instanceof AvroTypeException
+        || isExpectedAvroRuntimeFailure(exception) || isExpectedDecodingIllegalArgument(exception)
         || isExpectedUnsupportedOperation(exception);
   }
 
@@ -332,7 +335,7 @@ final class FuzzSupport {
 
     return message.startsWith("Malformed data.") || message.startsWith("Unknown datum type")
         || message.startsWith("Not an array") || message.startsWith("Not a map") || message.startsWith("No match for ")
-        || message.startsWith("No schema");
+        || message.startsWith("No schema") || message.startsWith("Duplicate field");
   }
 
   private static boolean isExpectedDecodingIllegalArgument(RuntimeException exception) {

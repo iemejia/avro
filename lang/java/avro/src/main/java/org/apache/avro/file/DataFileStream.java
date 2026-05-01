@@ -265,6 +265,9 @@ public class DataFileStream<D> implements Iterator<D>, Iterable<D>, Closeable {
   public D next(D reuse) throws IOException {
     if (!hasNext())
       throw new NoSuchElementException();
+    if (datumIn == null) {
+      throw new IOException("Invalid data file: block data not available.");
+    }
     D result = reader.read(reuse, datumIn);
     if (0 == --blockRemaining) {
       blockFinished();
