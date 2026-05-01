@@ -412,9 +412,8 @@ public class FastReaderBuilder {
     return reusingReader((reuse, decoder) -> {
       final int selection = decoder.readIndex();
       if (selection < 0 || selection >= unionReaders.length) {
-        throw new AvroRuntimeException(
-            "Malformed data. Union index " + selection + " is out of bounds for union with " + unionReaders.length
-                + (unionReaders.length == 1 ? " branch." : " branches."));
+        throw new AvroRuntimeException("Malformed data. Union index " + selection + " is out of bounds for union with "
+            + unionReaders.length + (unionReaders.length == 1 ? " branch." : " branches."));
       }
       return unionReaders[selection].read(null, decoder);
     });
@@ -496,9 +495,8 @@ public class FastReaderBuilder {
     return reusingReader((reuse, decoder) -> {
       int index = decoder.readEnum();
       if (index < 0 || index >= action.values.length) {
-        throw new AvroRuntimeException(
-            "Malformed data. Enum index " + index + " is out of bounds for enum with " + action.values.length
-                + (action.values.length == 1 ? " symbol." : " symbols."));
+        throw new AvroRuntimeException("Malformed data. Enum index " + index + " is out of bounds for enum with "
+            + action.values.length + (action.values.length == 1 ? " symbol." : " symbols."));
       }
       Object resultObject = action.values[index];
       if (resultObject == null) {

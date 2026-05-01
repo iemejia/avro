@@ -54,9 +54,10 @@ class TestFuzzFindings {
    */
   @Test
   void outOfBoundsUnionIndexThrowsAvroRuntimeException() throws IOException {
-    // Schema: a record with a union field ["null", "int"] (2 branches, valid indices: 0,1)
-    Schema unionSchema = Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL),
-        Schema.create(Schema.Type.INT)));
+    // Schema: a record with a union field ["null", "int"] (2 branches, valid
+    // indices: 0,1)
+    Schema unionSchema = Schema
+        .createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.INT)));
     Schema recordSchema = Schema.createRecord("TestRecord", null, "test", false);
     recordSchema.setFields(Arrays.asList(new Schema.Field("value", unionSchema, null, null)));
 
@@ -90,8 +91,8 @@ class TestFuzzFindings {
    */
   @Test
   void validUnionIndexStillWorks() throws IOException {
-    Schema unionSchema = Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL),
-        Schema.create(Schema.Type.INT)));
+    Schema unionSchema = Schema
+        .createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.INT)));
     Schema recordSchema = Schema.createRecord("TestRecord", null, "test", false);
     recordSchema.setFields(Arrays.asList(new Schema.Field("value", unionSchema, null, null)));
 
@@ -115,14 +116,15 @@ class TestFuzzFindings {
    */
   @Test
   void negativeUnionIndexThrowsAvroRuntimeException() throws IOException {
-    Schema unionSchema = Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL),
-        Schema.create(Schema.Type.INT)));
+    Schema unionSchema = Schema
+        .createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.INT)));
     Schema recordSchema = Schema.createRecord("TestRecord", null, "test", false);
     recordSchema.setFields(Arrays.asList(new Schema.Field("value", unionSchema, null, null)));
 
     // Avro varint for -1 is 0x01 (zigzag: (0 >>> 1) ^ -(0 & 1) = 0 for 0x00,
     // and -1 encodes as 0x01). Let's use raw bytes for index = -1.
-    // zigzag(-1) = 1, so byte is 0x01. But wait, index 1 is valid for ["null","int"].
+    // zigzag(-1) = 1, so byte is 0x01. But wait, index 1 is valid for
+    // ["null","int"].
     // zigzag(-2) = 3, so byte is 0x03. That's also potentially valid.
     // Actually, readIndex() calls readInt() which uses zigzag decoding.
     // zigzag(0x20) = 16 (positive). For a negative, we need an odd encoded value
@@ -217,7 +219,8 @@ class TestFuzzFindings {
     String schemaJson = "{\"type\":\"record\",\"name\":\"Outer\",\"fields\":["
         + "{\"name\":\"ref\",\"type\":\"NonExistentType\"}" + "]}";
 
-    AvroTypeException ex = assertThrows(AvroTypeException.class, () -> new SchemaParser().parse(schemaJson).mainSchema(),
+    AvroTypeException ex = assertThrows(AvroTypeException.class,
+        () -> new SchemaParser().parse(schemaJson).mainSchema(),
         "Should throw AvroTypeException for unresolved schema reference");
     assertTrue(ex.getMessage().contains("Unknown") || ex.getMessage().contains("Undefined"),
         "Expected 'Unknown' or 'Undefined' in message, got: " + ex.getMessage());
@@ -260,8 +263,8 @@ class TestFuzzFindings {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(out, null);
     GenericDatumWriter<GenericRecord> writer = new GenericDatumWriter<>(recordSchema);
-    GenericRecord record = new GenericRecordBuilder(recordSchema).set("color",
-        new org.apache.avro.generic.GenericData.EnumSymbol(enumSchema, "GREEN")).build();
+    GenericRecord record = new GenericRecordBuilder(recordSchema)
+        .set("color", new org.apache.avro.generic.GenericData.EnumSymbol(enumSchema, "GREEN")).build();
     writer.write(record, encoder);
     encoder.flush();
 
