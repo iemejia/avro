@@ -222,4 +222,53 @@ class TestFuzzFindings {
     assertTrue(ex.getMessage().contains("Unknown") || ex.getMessage().contains("Undefined"),
         "Expected 'Unknown' or 'Undefined' in message, got: " + ex.getMessage());
   }
+
+  /**
+   * FastReaderBuilder.createEnumReader must throw AvroRuntimeException with a
+   * descriptive message when the binary data contains an enum index that exceeds
+   * the number of symbols in the enum schema.
+   */
+  @Test
+  void outOfBoundsEnumIndexThrowsAvroRuntimeException() throws IOException {
+    Schema enumSchema = Schema.createEnum("Color", null, "test", Arrays.asList("RED", "GREEN", "BLUE"));
+    Schema recordSchema = Schema.createRecord("TestRecord", null, "test", false);
+    recordSchema.setFields(Arrays.asList(new Schema.Field("color", enumSchema, null, null)));
+
+    // Enum index 32 encoded as zigzag varint: zigzag(32) = 64 = 0x40
+    byte[] malformed = new byte[] { 0x40 };
+
+    GenericData data = new GenericData();
+    data.setFastReaderEnabled(true);
+    GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(recordSchema, recordSchema, data);
+
+    AvroRuntimeException ex = assertThrows(AvroRuntimeException.class,
+        () -> reader.read(null, DecoderFactory.get().binaryDecoder(malformed, null)));
+    assertTrue(ex.getMessage().contains("Enum index"), "Expected message about enum index, got: " + ex.getMessage());
+    assertTrue(ex.getMessage().contains("out of bounds"),
+        "Expected 'out of bounds' in message, got: " + ex.getMessage());
+  }
+
+  /**
+   * Valid enum indices should still work after the bounds check was added.
+   */
+  @Test
+  void validEnumIndexStillWorks() throws IOException {
+    Schema enumSchema = Schema.createEnum("Color", null, "test", Arrays.asList("RED", "GREEN", "BLUE"));
+    Schema recordSchema = Schema.createRecord("TestRecord", null, "test", false);
+    recordSchema.setFields(Arrays.asList(new Schema.Field("color", enumSchema, null, null)));
+
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(out, null);
+    GenericDatumWriter<GenericRecord> writer = new GenericDatumWriter<>(recordSchema);
+    GenericRecord record = new GenericRecordBuilder(recordSchema).set("color",
+        new org.apache.avro.generic.GenericData.EnumSymbol(enumSchema, "GREEN")).build();
+    writer.write(record, encoder);
+    encoder.flush();
+
+    GenericData data = new GenericData();
+    data.setFastReaderEnabled(true);
+    GenericDatumReader<GenericRecord> reader = new GenericDatumReader<>(recordSchema, recordSchema, data);
+    GenericRecord result = reader.read(null, DecoderFactory.get().binaryDecoder(out.toByteArray(), null));
+    assertEquals("GREEN", result.get("color").toString());
+  }
 }
