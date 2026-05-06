@@ -20,6 +20,8 @@ package org.apache.avro.util;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Objects;
 
 import org.apache.avro.SystemLimitException;
 
@@ -37,6 +39,8 @@ public class NonCopyingByteArrayOutputStream extends ByteArrayOutputStream {
    * Size limit, -1 for no limits.
    */
   private final long limit;
+
+  private static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
 
   /**
    * Creates a new byte array output stream, with no size limit.
@@ -77,28 +81,53 @@ public class NonCopyingByteArrayOutputStream extends ByteArrayOutputStream {
    *
    * @param bytes bytes to add
    */
-  private void checkCapacity(int bytes) {
+  private int checkCapacity(int bytes) {
+    long newSize = (long) size() + bytes;
     if (limit > 0) {
       SystemLimitException.checkMaxDecompressCapacity(limit, size(), bytes);
     }
+    if (newSize > MAX_ARRAY_SIZE) {
+      throw new OutOfMemoryError("Required array size too large");
+    }
+    return (int) newSize;
+  }
+
+  private void ensureCapacityFor(int minCapacity) {
+    if (minCapacity <= buf.length) {
+      return;
+    }
+
+    int maxCapacity = limit > 0 ? (int) Math.min(limit, MAX_ARRAY_SIZE) : MAX_ARRAY_SIZE;
+    int newCapacity = buf.length << 1;
+    if (newCapacity < minCapacity || newCapacity < 0) {
+      newCapacity = minCapacity;
+    }
+    if (newCapacity > maxCapacity) {
+      newCapacity = maxCapacity;
+    }
+    buf = Arrays.copyOf(buf, newCapacity);
   }
 
   @Override
   public synchronized void write(final int b) {
-    checkCapacity(1);
-    super.write(b);
+    int newCount = checkCapacity(1);
+    ensureCapacityFor(newCount);
+    buf[count] = (byte) b;
+    count = newCount;
   }
 
   @Override
   public synchronized void write(final byte[] b, final int off, final int len) {
-    checkCapacity(len);
-    super.write(b, off, len);
+    Objects.checkFromIndexSize(off, len, b.length);
+    int newCount = checkCapacity(len);
+    ensureCapacityFor(newCount);
+    System.arraycopy(b, off, buf, count, len);
+    count = newCount;
   }
 
   @Override
   public void writeBytes(final byte[] b) {
-    checkCapacity(b.length);
-    super.writeBytes(b);
+    write(b, 0, b.length);
   }
 
   /**
@@ -124,7 +153,8 @@ public class NonCopyingByteArrayOutputStream extends ByteArrayOutputStream {
    * @return the output stream
    */
   public static NonCopyingByteArrayOutputStream capacityLimitedOutputStream(final int size, long limit) {
-    return new NonCopyingByteArrayOutputStream(size, limit);
+    final int initialSize = limit > 0 ? (int) Math.min(size, limit) : size;
+    return new NonCopyingByteArrayOutputStream(initialSize, limit);
   }
 
 }
