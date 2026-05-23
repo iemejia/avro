@@ -77,6 +77,14 @@ if (CMAKE_COMPILER_IS_GNUCXX)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wuseless-cast -Wconversion -pedantic -Werror")
 endif ()
 
+# Reproducible build flags: warn on __DATE__/__TIME__ usage and normalize file paths
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    add_compile_options(-Wdate-time)
+    if (DEFINED ENV{SOURCE_DATE_EPOCH})
+        add_compile_options(-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.)
+    endif ()
+endif ()
+
 if (AVRO_BUILD_TESTS OR AVRO_USE_BOOST)
     # Boost 1.70 and above provide a BoostConfig.cmake package configuration file.
     # See https://cmake.org/cmake/help/latest/policy/CMP0167.html

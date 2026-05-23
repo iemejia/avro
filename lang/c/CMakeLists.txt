@@ -107,6 +107,14 @@ if(CMAKE_COMPILER_IS_GNUCC)
     add_definitions(-W -Wall)
 endif(CMAKE_COMPILER_IS_GNUCC)
 
+# Reproducible build flags: warn on __DATE__/__TIME__ usage and normalize file paths
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    add_compile_options(-Wdate-time)
+    if (DEFINED ENV{SOURCE_DATE_EPOCH})
+        add_compile_options(-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.)
+    endif ()
+endif ()
+
 if (WIN32)
    # Compile win32 in C++ to allow declarations after statements
    add_definitions(/TP)

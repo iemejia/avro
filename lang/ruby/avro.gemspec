@@ -21,6 +21,11 @@ Gem::Specification.new do |s|
   s.authors = ["Apache Software Foundation"]
   s.email = "dev@avro.apache.org"
 
+  # Pin gem date for reproducible builds when SOURCE_DATE_EPOCH is set
+  if ENV["SOURCE_DATE_EPOCH"]
+    s.date = Time.at(ENV["SOURCE_DATE_EPOCH"].to_i).utc.strftime("%Y-%m-%d")
+  end
+
   s.summary = "Apache Avro for Ruby"
   s.description = "Avro is a data serialization and RPC format"
   s.homepage = "https://avro.apache.org/"

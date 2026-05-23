@@ -61,6 +61,13 @@
     <None Include="$(MSBuildThisFileDirectory)\..\..\doc\assets\images\logo.png" Pack="true" Visible="false" PackagePath=""/>
   </ItemGroup>
 
+  <PropertyGroup Label="Reproducible Build">
+    <!-- Ensure deterministic output (default since .NET Core 2.0, explicit for clarity) -->
+    <Deterministic>true</Deterministic>
+    <!-- Normalize file paths in PDBs when running in CI -->
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
   <PropertyGroup>
     <!-- Disable warning for EOL target frameworks -->
     <CheckEolTargetFramework>false</CheckEolTargetFramework>

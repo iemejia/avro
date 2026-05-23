@@ -47,6 +47,11 @@ cd "${0%/*}"
 
 VERSION=$(<share/VERSION.txt)
 
+# Export SOURCE_DATE_EPOCH for reproducible builds across all languages.
+# This matches the Java project.build.outputTimestamp in pom.xml.
+# Tools that respect this: Python (wheel), Ruby (gem), tar, zip, etc.
+export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1723122283}
+
 # Extra flags to add to the docker run command.  This can be overridden using the --args argument.
 DOCKER_RUN_XTRA_ARGS=${DOCKER_RUN_XTRA_ARGS-}
 # The entrypoint when running the avro docker from this script.
@@ -160,7 +165,9 @@ do
       mvn -B install -DskipTests
 
       mkdir -p dist
-      (cd build; tar czf "../dist/${SRC_DIR}.tar.gz" "${SRC_DIR}")
+      (cd build; tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" \
+        --owner=0 --group=0 --numeric-owner \
+        -czf "../dist/${SRC_DIR}.tar.gz" "${SRC_DIR}")
 
       # build lang-specific artifacts
 
@@ -193,7 +200,9 @@ do
       mkdir -p "build/$DOC_DIR"
       cp doc/LICENSE "build/$DOC_DIR"
       cp doc/NOTICE "build/$DOC_DIR"
-      (cd build; tar czf "../dist/avro-doc-$VERSION.tar.gz" "$DOC_DIR")
+      (cd build; tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" \
+        --owner=0 --group=0 --numeric-owner \
+        -czf "../dist/avro-doc-$VERSION.tar.gz" "$DOC_DIR")
 
       cp DIST_README.txt dist/README.txt
       ;;
@@ -331,6 +340,7 @@ do
       # shellcheck disable=SC2086
       docker run --rm -t -i \
         --env "JAVA=${JAVA:-21}" \
+        --env "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
         --user "${USER_NAME}" \
         --volume "${HOME}/.gnupg:/home/${USER_NAME}/.gnupg" \
         --volume "${HOME}/.m2/repository:/home/${USER_NAME}/.m2/repository${DOCKER_MOUNT_FLAG}" \
@@ -359,7 +369,9 @@ do
       docker run --rm \
         --volume "${PWD}:/avro${DOCKER_MOUNT_FLAG}" \
         --volume "${PWD}/share/docker/m2/:/root/.m2/" \
-        --env "JAVA=${JAVA:-11}" avro-test /avro/share/docker/run-tests.sh
+        --env "JAVA=${JAVA:-11}" \
+        --env "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
+        avro-test /avro/share/docker/run-tests.sh
       ;;
 
     *)
