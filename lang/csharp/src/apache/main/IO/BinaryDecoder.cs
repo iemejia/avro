@@ -374,11 +374,24 @@ namespace Avro.IO
 
         private void Skip(int p)
         {
-            stream.Seek(p, SeekOrigin.Current);
+            Skip((long)p);
         }
 
         private void Skip(long p)
         {
+            if (p < 0)
+            {
+                // A negative length would seek backwards, re-reading data already
+                // consumed (or before the start of the stream). Reject it with a
+                // consistent AvroException, mirroring the guard in read(long).
+                throw new AvroException($"Can not skip a negative number of bytes: {p}");
+            }
+
+            // Do not skip past the end of the data: a malicious or truncated
+            // input can declare a huge length prefix on a field that is being
+            // skipped during schema resolution. This mirrors the guard applied
+            // on the read path.
+            EnsureAvailableBytes(p);
             stream.Seek(p, SeekOrigin.Current);
         }
     }

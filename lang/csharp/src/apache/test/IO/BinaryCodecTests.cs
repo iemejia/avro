@@ -552,6 +552,61 @@ namespace Avro.Test
             Assert.Throws<AvroException>(() => d.ReadBytes());
         }
 
+        // The skip path (used when resolving away a writer-only field) must also
+        // reject a negative length: seeking backwards would re-read data already
+        // consumed rather than skipping forward.
+        [Test]
+        public void TestSkipBytesRejectsNegativeLength()
+        {
+            var ms = new MemoryStream();
+            new BinaryEncoder(ms).WriteLong(-5);
+            ms.Position = 0;
+            var d = new BinaryDecoder(ms);
+            Assert.Throws<AvroException>(() => d.SkipBytes());
+        }
+
+        [Test]
+        public void TestSkipStringRejectsNegativeLength()
+        {
+            var ms = new MemoryStream();
+            new BinaryEncoder(ms).WriteLong(-5);
+            ms.Position = 0;
+            var d = new BinaryDecoder(ms);
+            Assert.Throws<AvroException>(() => d.SkipString());
+        }
+
+        // Skipping past the end of the data (a huge length prefix on a skipped
+        // field) must be rejected rather than silently seeking beyond the end.
+        [Test]
+        public void TestSkipBytesRejectsLengthBeyondRemaining()
+        {
+            var ms = new MemoryStream();
+            new BinaryEncoder(ms).WriteLong(1000); // claims 1000 bytes, but none follow
+            ms.Position = 0;
+            var d = new BinaryDecoder(ms);
+            Assert.Throws<AvroException>(() => d.SkipBytes());
+        }
+
+        // Resolving away a writer-only bytes field whose length is negative must
+        // fail cleanly instead of corrupting the decoding of following fields.
+        [Test]
+        public void TestSkipNegativeBytesDuringResolution()
+        {
+            var writer = Avro.Schema.Parse(
+                "{\"type\":\"record\",\"name\":\"S\",\"fields\":[" +
+                "{\"name\":\"b\",\"type\":\"bytes\"},{\"name\":\"a\",\"type\":\"long\"}]}");
+            var reader = Avro.Schema.Parse(
+                "{\"type\":\"record\",\"name\":\"S\",\"fields\":[" +
+                "{\"name\":\"a\",\"type\":\"long\"}]}");
+            var ms = new MemoryStream();
+            var enc = new BinaryEncoder(ms);
+            enc.WriteLong(-1); // b: negative bytes length (malformed)
+            enc.WriteLong(5);  // a
+            ms.Position = 0;
+            var r = new GenericReader<object>(writer, reader);
+            Assert.Throws<AvroException>(() => r.Read(null, new BinaryDecoder(ms)));
+        }
+
         // A block count larger than int.MaxValue must be rejected before the
         // int cast, even for a null-element array where the byte check is
         // skipped.
