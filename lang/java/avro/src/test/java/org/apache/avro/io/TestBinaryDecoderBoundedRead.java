@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -57,6 +58,47 @@ public class TestBinaryDecoderBoundedRead {
   }
 
   /**
+   * A non-seekable stream that records the largest single {@code read} request it
+   * receives. The bounded-read guard reads in chunks capped at
+   * {@link BinaryDecoder#MAX_UNVERIFIED_ALLOCATION}; without the guard the decoder
+   * allocates the full declared length and asks the source for it in one read, so
+   * the recorded maximum distinguishes the two regardless of heap size.
+   */
+  private static final class MaxReadRecordingStream extends FilterInputStream {
+    private int maxRequested = 0;
+
+    MaxReadRecordingStream(byte[] data) {
+      super(new ByteArrayInputStream(data));
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+      maxRequested = Math.max(maxRequested, len);
+      return super.read(b, off, len);
+    }
+
+    @Override
+    public int read(byte[] b) throws IOException {
+      maxRequested = Math.max(maxRequested, b.length);
+      return super.read(b);
+    }
+  }
+
+  /**
+   * Assert the guard never asked the source for more than
+   * {@link BinaryDecoder#MAX_UNVERIFIED_ALLOCATION} bytes in one read. This is
+   * heap-independent: without the guard the decoder allocates the full declared
+   * length and requests it in a single read, so {@code maxRequested} would be the
+   * ~2 GB {@link #HUGE_LENGTH} rather than the bounded chunk size.
+   */
+  private static void assertBoundedRead(MaxReadRecordingStream stream) {
+    assertTrue(stream.maxRequested <= BinaryDecoder.MAX_UNVERIFIED_ALLOCATION,
+        "source must not be asked for more than MAX_UNVERIFIED_ALLOCATION ("
+            + BinaryDecoder.MAX_UNVERIFIED_ALLOCATION + ") bytes in one read, but was asked for "
+            + stream.maxRequested);
+  }
+
+  /**
    * Encodes a bytes/string length prefix followed by {@code payload} raw bytes.
    */
   private static byte[] lengthPrefixed(long declaredLength, byte[] payload) throws IOException {
@@ -79,32 +121,40 @@ public class TestBinaryDecoderBoundedRead {
   @Timeout(value = 30, unit = TimeUnit.SECONDS)
   void bufferedDecoderRejectsHugeBytesLengthOnStreamWithoutHugeAllocation() throws IOException {
     byte[] data = lengthPrefixed(HUGE_LENGTH, new byte[] { 1, 2, 3, 4, 5 });
-    BinaryDecoder d = DecoderFactory.get().binaryDecoder(nonSeekable(data), null);
+    MaxReadRecordingStream stream = new MaxReadRecordingStream(data);
+    BinaryDecoder d = DecoderFactory.get().binaryDecoder(stream, null);
     assertThrows(EOFException.class, () -> d.readBytes(null));
+    assertBoundedRead(stream);
   }
 
   @Test
   @Timeout(value = 30, unit = TimeUnit.SECONDS)
   void bufferedDecoderRejectsHugeStringLengthOnStreamWithoutHugeAllocation() throws IOException {
     byte[] data = lengthPrefixed(HUGE_LENGTH, new byte[] { 'a', 'b', 'c' });
-    BinaryDecoder d = DecoderFactory.get().binaryDecoder(nonSeekable(data), null);
+    MaxReadRecordingStream stream = new MaxReadRecordingStream(data);
+    BinaryDecoder d = DecoderFactory.get().binaryDecoder(stream, null);
     assertThrows(EOFException.class, () -> d.readString(null));
+    assertBoundedRead(stream);
   }
 
   @Test
   @Timeout(value = 30, unit = TimeUnit.SECONDS)
   void directDecoderRejectsHugeBytesLengthOnStreamWithoutHugeAllocation() throws IOException {
     byte[] data = lengthPrefixed(HUGE_LENGTH, new byte[] { 1, 2, 3, 4, 5 });
-    BinaryDecoder d = DecoderFactory.get().directBinaryDecoder(nonSeekable(data), null);
+    MaxReadRecordingStream stream = new MaxReadRecordingStream(data);
+    BinaryDecoder d = DecoderFactory.get().directBinaryDecoder(stream, null);
     assertThrows(EOFException.class, () -> d.readBytes(null));
+    assertBoundedRead(stream);
   }
 
   @Test
   @Timeout(value = 30, unit = TimeUnit.SECONDS)
   void directDecoderRejectsHugeStringLengthOnStreamWithoutHugeAllocation() throws IOException {
     byte[] data = lengthPrefixed(HUGE_LENGTH, new byte[] { 'a', 'b', 'c' });
-    BinaryDecoder d = DecoderFactory.get().directBinaryDecoder(nonSeekable(data), null);
+    MaxReadRecordingStream stream = new MaxReadRecordingStream(data);
+    BinaryDecoder d = DecoderFactory.get().directBinaryDecoder(stream, null);
     assertThrows(EOFException.class, () -> d.readString(null));
+    assertBoundedRead(stream);
   }
 
   @Test
