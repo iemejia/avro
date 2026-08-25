@@ -2156,7 +2156,9 @@ static void testArrayInt64MinBlockCount() {
     DecoderPtr d = binaryDecoder();
     d->init(*is);
 
-    BOOST_CHECK_THROW(d->arrayStart(), Exception);
+    BOOST_CHECK_EXCEPTION(d->arrayStart(), Exception, [](const Exception &e) {
+        return std::string(e.what()).find("negative block count") != std::string::npos;
+    });
 }
 
 static void testMapInt64MinBlockCount() {
@@ -2168,7 +2170,9 @@ static void testMapInt64MinBlockCount() {
     DecoderPtr d = binaryDecoder();
     d->init(*is);
 
-    BOOST_CHECK_THROW(d->mapStart(), Exception);
+    BOOST_CHECK_EXCEPTION(d->mapStart(), Exception, [](const Exception &e) {
+        return std::string(e.what()).find("negative block count") != std::string::npos;
+    });
 }
 
 } // namespace avro

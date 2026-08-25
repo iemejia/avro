@@ -88,6 +88,14 @@ public:
 };
 } // namespace
 
+// Assert that a thrown avro::Exception carries the guard's own message rather
+// than an incidental end-of-stream error. Without this, a "huge length/count,
+// no data" test passes even with the guard removed, because the decoder faults
+// later on the truncated input and throws the same avro::Exception type.
+static bool exceptionMentions(const Exception &e, const char *needle) {
+    return std::string(e.what()).find(needle) != std::string::npos;
+}
+
 // Reading a bytes value whose declared length far exceeds the tiny backing
 // buffer must throw instead of attempting a huge allocation.
 static void testDecodeBytesRejectsOversizedLength() {
@@ -97,7 +105,8 @@ static void testDecodeBytesRejectsOversizedLength() {
     DecoderPtr d = binaryDecoder();
     d->init(*in);
     std::vector<uint8_t> value;
-    BOOST_CHECK_THROW(d->decodeBytes(value), Exception);
+    BOOST_CHECK_EXCEPTION(d->decodeBytes(value), Exception,
+                          [](const Exception &e) { return exceptionMentions(e, "exceeds"); });
 }
 
 static void testDecodeStringRejectsOversizedLength() {
@@ -106,7 +115,8 @@ static void testDecodeStringRejectsOversizedLength() {
     DecoderPtr d = binaryDecoder();
     d->init(*in);
     std::string value;
-    BOOST_CHECK_THROW(d->decodeString(value), Exception);
+    BOOST_CHECK_EXCEPTION(d->decodeString(value), Exception,
+                          [](const Exception &e) { return exceptionMentions(e, "exceeds"); });
 }
 
 // A well-formed value whose declared length fits the buffer still decodes.
@@ -163,13 +173,15 @@ static void testReadArrayRejectsOversizedCount() {
     ValidSchema s = compileJsonSchemaFromString(
         "{\"type\":\"array\",\"items\":\"long\"}");
     // 1,000,000 long elements declared, but no element data follows.
-    BOOST_CHECK_THROW(decodeCollectionHeader(s, 1000000, false), Exception);
+    BOOST_CHECK_EXCEPTION(decodeCollectionHeader(s, 1000000, false), Exception,
+                          [](const Exception &e) { return exceptionMentions(e, "Collection claims"); });
 }
 
 static void testReadMapRejectsOversizedCount() {
     ValidSchema s = compileJsonSchemaFromString(
         "{\"type\":\"map\",\"values\":\"long\"}");
-    BOOST_CHECK_THROW(decodeCollectionHeader(s, 1000000, false), Exception);
+    BOOST_CHECK_EXCEPTION(decodeCollectionHeader(s, 1000000, false), Exception,
+                          [](const Exception &e) { return exceptionMentions(e, "Collection claims"); });
 }
 
 static void testReadArrayOfNullNotFalselyRejected() {
@@ -334,7 +346,8 @@ static void testSkipArrayRejectsNegativeBlockSize() {
     InputStreamPtr in = memoryInputStream(*os);
     DecoderPtr d = binaryDecoder();
     d->init(*in);
-    BOOST_CHECK_THROW(d->skipArray(), Exception);
+    BOOST_CHECK_EXCEPTION(d->skipArray(), Exception,
+                          [](const Exception &e) { return exceptionMentions(e, "negative block size"); });
 }
 
 // A union branch index outside [0, branch count) is malformed and must be
